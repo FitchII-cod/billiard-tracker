@@ -1,0 +1,1159 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Billard Tracker</title>
+    <link rel="manifest" href="/manifest.json">
+    <meta name="theme-color" content="#1a5f3f">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        :root {
+            --primary: #1a5f3f;
+            --primary-dark: #0d3023;
+            --secondary: #d4af37;
+            --success: #28a745;
+            --danger: #dc3545;
+            --warning: #ffc107;
+            --info: #17a2b8;
+            --light: #f8f9fa;
+            --dark: #343a40;
+            --border-radius: 8px;
+            --shadow: 0 2px 4px rgba(0,0,0,0.1);
+            --shadow-lg: 0 4px 12px rgba(0,0,0,0.15);
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+            background: linear-gradient(135deg, #1a5f3f 0%, #0d3023 100%);
+            min-height: 100vh;
+            color: white;
+        }
+
+        .app-container {
+            max-width: 600px;
+            margin: 0 auto;
+            padding-bottom: 70px;
+        }
+
+        /* Header */
+        .header {
+            background: rgba(255, 255, 255, 0.1);
+            backdrop-filter: blur(10px);
+            padding: 15px 20px;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            border-bottom: 1px solid rgba(255, 255, 255, 0.2);
+        }
+
+        .header h1 {
+            font-size: 24px;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .header .icon {
+            width: 30px;
+            height: 30px;
+        }
+
+        /* Navigation */
+        .nav-tabs {
+            position: fixed;
+            bottom: 0;
+            left: 0;
+            right: 0;
+            background: rgba(26, 95, 63, 0.95);
+            backdrop-filter: blur(10px);
+            display: flex;
+            justify-content: space-around;
+            padding: 10px 0;
+            border-top: 1px solid rgba(255, 255, 255, 0.2);
+            z-index: 1000;
+        }
+
+        .nav-tab {
+            flex: 1;
+            text-align: center;
+            padding: 8px;
+            color: rgba(255, 255, 255, 0.7);
+            cursor: pointer;
+            transition: all 0.3s;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 4px;
+            text-decoration: none;
+            font-size: 12px;
+        }
+
+        .nav-tab.active {
+            color: var(--secondary);
+        }
+
+        .nav-tab:hover {
+            color: white;
+        }
+
+        .nav-icon {
+            width: 24px;
+            height: 24px;
+        }
+
+        /* Content Pages */
+        .page {
+            display: none;
+            padding: 20px;
+            animation: fadeIn 0.3s;
+        }
+
+        .page.active {
+            display: block;
+        }
+
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(10px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+
+        /* Cards */
+        .card {
+            background: rgba(255, 255, 255, 0.1);
+            backdrop-filter: blur(10px);
+            border-radius: var(--border-radius);
+            padding: 20px;
+            margin-bottom: 15px;
+            border: 1px solid rgba(255, 255, 255, 0.2);
+        }
+
+        /* Forms */
+        .form-group {
+            margin-bottom: 20px;
+        }
+
+        label {
+            display: block;
+            margin-bottom: 8px;
+            font-weight: 500;
+            color: rgba(255, 255, 255, 0.9);
+        }
+
+        input, select, textarea {
+            width: 100%;
+            padding: 12px;
+            border: 1px solid rgba(255, 255, 255, 0.3);
+            border-radius: var(--border-radius);
+            background: rgba(255, 255, 255, 0.1);
+            color: white;
+            font-size: 16px;
+        }
+
+        input::placeholder {
+            color: rgba(255, 255, 255, 0.5);
+        }
+
+        /* Buttons */
+        .btn {
+            padding: 12px 24px;
+            border: none;
+            border-radius: var(--border-radius);
+            font-size: 16px;
+            font-weight: 500;
+            cursor: pointer;
+            transition: all 0.3s;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            gap: 8px;
+            text-decoration: none;
+            color: white;
+        }
+
+        .btn-primary {
+            background: var(--secondary);
+            color: var(--dark);
+        }
+
+        .btn-primary:hover {
+            background: #b8941f;
+            transform: translateY(-2px);
+            box-shadow: var(--shadow-lg);
+        }
+
+        .btn-success {
+            background: var(--success);
+        }
+
+        .btn-danger {
+            background: var(--danger);
+        }
+
+        .btn-block {
+            width: 100%;
+        }
+
+        /* Player Grid */
+        .player-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(100px, 1fr));
+            gap: 10px;
+            margin-bottom: 20px;
+        }
+
+        .player-tile {
+            background: rgba(255, 255, 255, 0.1);
+            border: 2px solid transparent;
+            border-radius: var(--border-radius);
+            padding: 15px;
+            text-align: center;
+            cursor: pointer;
+            transition: all 0.3s;
+        }
+
+        .player-tile:hover {
+            background: rgba(255, 255, 255, 0.2);
+            transform: scale(1.05);
+        }
+
+        .player-tile.selected-a {
+            border-color: var(--info);
+            background: rgba(23, 162, 184, 0.3);
+        }
+
+        .player-tile.selected-b {
+            border-color: var(--warning);
+            background: rgba(255, 193, 7, 0.3);
+        }
+
+        /* Team Display */
+        .teams-display {
+            display: grid;
+            grid-template-columns: 1fr auto 1fr;
+            gap: 20px;
+            margin-bottom: 20px;
+            align-items: center;
+        }
+
+        .team-side {
+            background: rgba(255, 255, 255, 0.1);
+            border-radius: var(--border-radius);
+            padding: 15px;
+            text-align: center;
+            min-height: 80px;
+        }
+
+        .team-side h3 {
+            margin-bottom: 10px;
+            color: var(--secondary);
+        }
+
+        .vs-separator {
+            font-size: 24px;
+            font-weight: bold;
+            color: var(--secondary);
+        }
+
+        /* Slider */
+        .slider-container {
+            display: flex;
+            align-items: center;
+            gap: 15px;
+        }
+
+        input[type="range"] {
+            flex: 1;
+            height: 6px;
+            -webkit-appearance: none;
+            appearance: none;
+            background: rgba(255, 255, 255, 0.3);
+            outline: none;
+            border-radius: 3px;
+        }
+
+        input[type="range"]::-webkit-slider-thumb {
+            -webkit-appearance: none;
+            appearance: none;
+            width: 24px;
+            height: 24px;
+            background: var(--secondary);
+            cursor: pointer;
+            border-radius: 50%;
+        }
+
+        .slider-value {
+            background: rgba(255, 255, 255, 0.2);
+            padding: 8px 12px;
+            border-radius: var(--border-radius);
+            min-width: 40px;
+            text-align: center;
+            font-weight: bold;
+        }
+
+        /* Leaderboard */
+        .leaderboard-table {
+            width: 100%;
+            border-collapse: collapse;
+        }
+
+        .leaderboard-table th,
+        .leaderboard-table td {
+            padding: 12px;
+            text-align: left;
+            border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+        }
+
+        .leaderboard-table th {
+            background: rgba(255, 255, 255, 0.1);
+            font-weight: 600;
+            position: sticky;
+            top: 0;
+        }
+
+        .rank-medal {
+            display: inline-block;
+            width: 24px;
+            height: 24px;
+            border-radius: 50%;
+            text-align: center;
+            line-height: 24px;
+            font-weight: bold;
+            margin-right: 8px;
+        }
+
+        .rank-1 { background: gold; color: black; }
+        .rank-2 { background: silver; color: black; }
+        .rank-3 { background: #cd7f32; color: white; }
+
+        /* Badges */
+        .badge {
+            display: inline-block;
+            padding: 4px 8px;
+            border-radius: 12px;
+            font-size: 12px;
+            font-weight: bold;
+            margin-left: 8px;
+        }
+
+        .badge-win {
+            background: var(--success);
+            color: white;
+        }
+
+        .badge-loss {
+            background: var(--danger);
+            color: white;
+        }
+
+        /* H2H Stats */
+        .h2h-panel {
+            background: rgba(255, 255, 255, 0.15);
+            border-radius: var(--border-radius);
+            padding: 15px;
+            margin-top: 20px;
+            display: none;
+        }
+
+        .h2h-panel.visible {
+            display: block;
+            animation: slideUp 0.3s;
+        }
+
+        @keyframes slideUp {
+            from { opacity: 0; transform: translateY(20px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+
+        .h2h-stats {
+            display: grid;
+            grid-template-columns: repeat(2, 1fr);
+            gap: 10px;
+            margin-top: 10px;
+        }
+
+        .stat-item {
+            background: rgba(255, 255, 255, 0.1);
+            padding: 10px;
+            border-radius: var(--border-radius);
+            text-align: center;
+        }
+
+        .stat-value {
+            font-size: 24px;
+            font-weight: bold;
+            color: var(--secondary);
+        }
+
+        .stat-label {
+            font-size: 12px;
+            color: rgba(255, 255, 255, 0.7);
+            margin-top: 4px;
+        }
+
+        /* Match History */
+        .match-card {
+            background: rgba(255, 255, 255, 0.1);
+            border-radius: var(--border-radius);
+            padding: 15px;
+            margin-bottom: 10px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .match-teams {
+            flex: 1;
+        }
+
+        .match-result {
+            text-align: right;
+        }
+
+        .winner {
+            color: var(--success);
+            font-weight: bold;
+        }
+
+        /* Loading */
+        .loading {
+            text-align: center;
+            padding: 40px;
+        }
+
+        .spinner {
+            border: 3px solid rgba(255, 255, 255, 0.3);
+            border-top: 3px solid var(--secondary);
+            border-radius: 50%;
+            width: 40px;
+            height: 40px;
+            animation: spin 1s linear infinite;
+            margin: 0 auto;
+        }
+
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+
+        /* Responsive */
+        @media (max-width: 480px) {
+            .header h1 {
+                font-size: 20px;
+            }
+            
+            .player-grid {
+                grid-template-columns: repeat(auto-fill, minmax(80px, 1fr));
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="app-container">
+        <header class="header">
+            <h1>
+                <span>🎱</span>
+                Billard Tracker
+            </h1>
+            <button id="syncBtn" class="btn btn-sm">
+                <span id="syncIcon">⟳</span>
+            </button>
+        </header>
+
+        <!-- Page Jouer -->
+        <div id="page-play" class="page active">
+            <div class="card">
+                <h2>Nouvelle Partie</h2>
+                
+                <div class="form-group">
+                    <label>Format</label>
+                    <select id="gameFormat">
+                        <option value="1v1">1 vs 1</option>
+                        <option value="2v2">2 vs 2</option>
+                        <option value="3v3">3 vs 3</option>
+                        <option value="1v2">1 vs 2</option>
+                    </select>
+                </div>
+
+                <div class="form-group">
+                    <label>Sélection des joueurs</label>
+                    <div class="player-grid" id="playerGrid">
+                        <!-- Généré dynamiquement -->
+                    </div>
+                    <button class="btn btn-primary" onclick="showNewPlayerModal()">
+                        + Nouveau joueur
+                    </button>
+                </div>
+
+                <div class="teams-display">
+                    <div class="team-side" id="teamA">
+                        <h3>Équipe A</h3>
+                        <div id="teamAPlayers">-</div>
+                    </div>
+                    <div class="vs-separator">VS</div>
+                    <div class="team-side" id="teamB">
+                        <h3>Équipe B</h3>
+                        <div id="teamBPlayers">-</div>
+                    </div>
+                </div>
+
+                <div class="h2h-panel" id="h2hPanel">
+                    <h3>Confrontations précédentes</h3>
+                    <div class="h2h-stats" id="h2hStats">
+                        <!-- Généré dynamiquement -->
+                    </div>
+                </div>
+
+                <div class="form-group">
+                    <label>Vainqueur</label>
+                    <div style="display: flex; gap: 10px;">
+                        <button class="btn btn-success" style="flex: 1" onclick="selectWinner('A')">
+                            Équipe A
+                        </button>
+                        <button class="btn btn-warning" style="flex: 1" onclick="selectWinner('B')">
+                            Équipe B
+                        </button>
+                    </div>
+                </div>
+
+                <div class="form-group">
+                    <label>Boules restantes (perdant)</label>
+                    <div class="slider-container">
+                        <input type="range" id="ballsRemaining" min="0" max="7" value="0">
+                        <div class="slider-value" id="ballsValue">0</div>
+                    </div>
+                </div>
+
+                <div class="form-group">
+                    <label>
+                        <input type="checkbox" id="foulBlack"> Faute sur la noire
+                    </label>
+                </div>
+
+                <div class="form-group">
+                    <label>
+                        <input type="checkbox" id="ranked" checked> Partie classée
+                    </label>
+                </div>
+
+                <button class="btn btn-primary btn-block" onclick="submitMatch()">
+                    Valider la partie
+                </button>
+            </div>
+        </div>
+
+        <!-- Page Classement -->
+        <div id="page-leaderboard" class="page">
+            <div class="card">
+                <h2>Classement</h2>
+                
+                <div class="form-group">
+                    <select id="leaderboardFormat" onchange="loadLeaderboard()">
+                        <option value="1v1">1 vs 1</option>
+                        <option value="2v2">2 vs 2</option>
+                        <option value="global">Global</option>
+                    </select>
+                </div>
+
+                <div id="leaderboardContent">
+                    <div class="loading">
+                        <div class="spinner"></div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Page Historique -->
+        <div id="page-history" class="page">
+            <div class="card">
+                <h2>Historique</h2>
+                
+                <div class="form-group">
+                    <input type="text" id="historySearch" placeholder="Rechercher un joueur...">
+                </div>
+
+                <div id="historyContent">
+                    <div class="loading">
+                        <div class="spinner"></div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Page Joueurs -->
+        <div id="page-players" class="page">
+            <div class="card">
+                <h2>Joueurs</h2>
+                
+                <div class="form-group">
+                    <button class="btn btn-primary btn-block" onclick="showNewPlayerModal()">
+                        + Ajouter un joueur
+                    </button>
+                </div>
+
+                <div id="playersContent">
+                    <div class="loading">
+                        <div class="spinner"></div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Page Admin -->
+        <div id="page-admin" class="page">
+            <div class="card">
+                <h2>Administration</h2>
+                
+                <div id="adminLogin">
+                    <div class="form-group">
+                        <label>Code PIN</label>
+                        <input type="password" id="adminPin" placeholder="Entrez le code PIN">
+                    </div>
+                    <button class="btn btn-primary btn-block" onclick="adminLogin()">
+                        Se connecter
+                    </button>
+                </div>
+
+                <div id="adminPanel" style="display: none;">
+                    <h3>Paramètres ELO</h3>
+                    
+                    <div class="form-group">
+                        <label>K Base</label>
+                        <input type="number" id="kBase" value="24" step="1">
+                    </div>
+
+                    <div class="form-group">
+                        <label>Alpha (margin of victory)</label>
+                        <input type="number" id="alpha" value="0.5" step="0.1">
+                    </div>
+
+                    <div class="form-group">
+                        <label>Beta (anti-farm)</label>
+                        <input type="number" id="beta" value="0.5" step="0.1">
+                    </div>
+
+                    <div class="form-group">
+                        <label>Delta</label>
+                        <input type="number" id="delta" value="400" step="50">
+                    </div>
+
+                    <button class="btn btn-primary" onclick="saveSettings()">
+                        Sauvegarder les paramètres
+                    </button>
+
+                    <hr style="margin: 20px 0; border-color: rgba(255,255,255,0.2);">
+
+                    <button class="btn btn-danger" onclick="exportData()">
+                        Exporter les données
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Navigation -->
+    <nav class="nav-tabs">
+        <a href="#play" class="nav-tab active" data-page="play">
+            <span class="nav-icon">🎮</span>
+            <span>Jouer</span>
+        </a>
+        <a href="#leaderboard" class="nav-tab" data-page="leaderboard">
+            <span class="nav-icon">🏆</span>
+            <span>Classement</span>
+        </a>
+        <a href="#history" class="nav-tab" data-page="history">
+            <span class="nav-icon">📊</span>
+            <span>Historique</span>
+        </a>
+        <a href="#players" class="nav-tab" data-page="players">
+            <span class="nav-icon">👥</span>
+            <span>Joueurs</span>
+        </a>
+        <a href="#admin" class="nav-tab" data-page="admin">
+            <span class="nav-icon">⚙️</span>
+            <span>Admin</span>
+        </a>
+    </nav>
+
+    <script>
+        // Configuration API
+        const API_BASE = 'http://billiard.local:8000';
+        let adminToken = localStorage.getItem('adminToken');
+        
+        // État de l'application
+        let gameState = {
+            format: '1v1',
+            playersA: [],
+            playersB: [],
+            winner: null,
+            ballsRemaining: 0,
+            foulBlack: false,
+            ranked: true
+        };
+
+        let players = [];
+        let currentPage = 'play';
+
+        // Navigation
+        document.querySelectorAll('.nav-tab').forEach(tab => {
+            tab.addEventListener('click', (e) => {
+                e.preventDefault();
+                const page = tab.dataset.page;
+                showPage(page);
+            });
+        });
+
+        function showPage(page) {
+            // Masquer toutes les pages
+            document.querySelectorAll('.page').forEach(p => {
+                p.classList.remove('active');
+            });
+            
+            // Masquer tous les onglets actifs
+            document.querySelectorAll('.nav-tab').forEach(t => {
+                t.classList.remove('active');
+            });
+            
+            // Afficher la page sélectionnée
+            document.getElementById(`page-${page}`).classList.add('active');
+            document.querySelector(`.nav-tab[data-page="${page}"]`).classList.add('active');
+            
+            currentPage = page;
+            
+            // Charger le contenu de la page
+            switch(page) {
+                case 'play':
+                    loadPlayers();
+                    break;
+                case 'leaderboard':
+                    loadLeaderboard();
+                    break;
+                case 'history':
+                    loadHistory();
+                    break;
+                case 'players':
+                    loadPlayersPage();
+                    break;
+            }
+        }
+
+        // Chargement des joueurs
+        async function loadPlayers() {
+            try {
+                const response = await fetch(`${API_BASE}/players`);
+                players = await response.json();
+                renderPlayerGrid();
+            } catch (error) {
+                console.error('Erreur lors du chargement des joueurs:', error);
+            }
+        }
+
+        // Affichage de la grille de joueurs
+        function renderPlayerGrid() {
+            const grid = document.getElementById('playerGrid');
+            grid.innerHTML = '';
+            
+            players.forEach(player => {
+                if (!player.is_guest) {
+                    const tile = document.createElement('div');
+                    tile.className = 'player-tile';
+                    tile.textContent = player.name;
+                    tile.dataset.playerId = player.id;
+                    tile.onclick = () => selectPlayer(player.id);
+                    
+                    // Vérifier si le joueur est déjà sélectionné
+                    if (gameState.playersA.includes(player.id)) {
+                        tile.classList.add('selected-a');
+                    } else if (gameState.playersB.includes(player.id)) {
+                        tile.classList.add('selected-b');
+                    }
+                    
+                    grid.appendChild(tile);
+                }
+            });
+        }
+
+        // Sélection d'un joueur
+        function selectPlayer(playerId) {
+            const format = document.getElementById('gameFormat').value;
+            const maxPlayers = getMaxPlayers(format);
+            
+            // Si le joueur est déjà sélectionné, le retirer
+            if (gameState.playersA.includes(playerId)) {
+                gameState.playersA = gameState.playersA.filter(id => id !== playerId);
+            } else if (gameState.playersB.includes(playerId)) {
+                gameState.playersB = gameState.playersB.filter(id => id !== playerId);
+            } else {
+                // Ajouter le joueur à l'équipe avec le moins de joueurs
+                if (gameState.playersA.length < maxPlayers.a) {
+                    gameState.playersA.push(playerId);
+                } else if (gameState.playersB.length < maxPlayers.b) {
+                    gameState.playersB.push(playerId);
+                }
+            }
+            
+            renderPlayerGrid();
+            updateTeamsDisplay();
+            checkH2H();
+        }
+
+        // Obtenir le nombre max de joueurs par équipe
+        function getMaxPlayers(format) {
+            const formats = {
+                '1v1': { a: 1, b: 1 },
+                '2v2': { a: 2, b: 2 },
+                '3v3': { a: 3, b: 3 },
+                '1v2': { a: 1, b: 2 }
+            };
+            return formats[format] || { a: 1, b: 1 };
+        }
+
+        // Mise à jour de l'affichage des équipes
+        function updateTeamsDisplay() {
+            const teamADiv = document.getElementById('teamAPlayers');
+            const teamBDiv = document.getElementById('teamBPlayers');
+            
+            const teamANames = gameState.playersA.map(id => {
+                const player = players.find(p => p.id === id);
+                return player ? player.name : '';
+            }).filter(n => n).join(' + ');
+            
+            const teamBNames = gameState.playersB.map(id => {
+                const player = players.find(p => p.id === id);
+                return player ? player.name : '';
+            }).filter(n => n).join(' + ');
+            
+            teamADiv.textContent = teamANames || '-';
+            teamBDiv.textContent = teamBNames || '-';
+        }
+
+        // Vérifier et afficher les stats H2H
+        async function checkH2H() {
+            const format = document.getElementById('gameFormat').value;
+            const maxPlayers = getMaxPlayers(format);
+            
+            if (gameState.playersA.length === maxPlayers.a && 
+                gameState.playersB.length === maxPlayers.b) {
+                
+                try {
+                    const response = await fetch(`${API_BASE}/head-to-head`, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({
+                            format: format,
+                            players_a: gameState.playersA,
+                            players_b: gameState.playersB
+                        })
+                    });
+                    
+                    const h2h = await response.json();
+                    displayH2H(h2h);
+                } catch (error) {
+                    console.error('Erreur H2H:', error);
+                }
+            } else {
+                document.getElementById('h2hPanel').classList.remove('visible');
+            }
+        }
+
+        // Afficher les stats H2H
+        function displayH2H(stats) {
+            const panel = document.getElementById('h2hPanel');
+            const content = document.getElementById('h2hStats');
+            
+            if (stats.total_games > 0) {
+                content.innerHTML = `
+                    <div class="stat-item">
+                        <div class="stat-value">${stats.total_games}</div>
+                        <div class="stat-label">Parties jouées</div>
+                    </div>
+                    <div class="stat-item">
+                        <div class="stat-value">${stats.side_a_wins}-${stats.side_b_wins}</div>
+                        <div class="stat-label">Score A-B</div>
+                    </div>
+                    <div class="stat-item">
+                        <div class="stat-value">${stats.avg_balls_remaining.toFixed(1)}</div>
+                        <div class="stat-label">Boules moy.</div>
+                    </div>
+                    <div class="stat-item">
+                        <div class="stat-value">${stats.last_5_results.join(' ')}</div>
+                        <div class="stat-label">Forme (5 derniers)</div>
+                    </div>
+                `;
+                panel.classList.add('visible');
+            } else {
+                panel.classList.remove('visible');
+            }
+        }
+
+        // Sélection du vainqueur
+        function selectWinner(side) {
+            gameState.winner = side;
+            // Mise à jour visuelle
+            document.querySelectorAll('.btn-success, .btn-warning').forEach(btn => {
+                btn.style.opacity = '0.5';
+            });
+            event.target.style.opacity = '1';
+        }
+
+        // Slider des boules restantes
+        document.getElementById('ballsRemaining').addEventListener('input', (e) => {
+            gameState.ballsRemaining = parseInt(e.target.value);
+            document.getElementById('ballsValue').textContent = e.target.value;
+        });
+
+        // Changement de format
+        document.getElementById('gameFormat').addEventListener('change', (e) => {
+            gameState.format = e.target.value;
+            gameState.playersA = [];
+            gameState.playersB = [];
+            renderPlayerGrid();
+            updateTeamsDisplay();
+        });
+
+        // Soumission du match
+        async function submitMatch() {
+            const format = document.getElementById('gameFormat').value;
+            const maxPlayers = getMaxPlayers(format);
+            
+            // Validation
+            if (gameState.playersA.length !== maxPlayers.a || 
+                gameState.playersB.length !== maxPlayers.b) {
+                alert('Veuillez sélectionner tous les joueurs');
+                return;
+            }
+            
+            if (!gameState.winner) {
+                alert('Veuillez sélectionner le vainqueur');
+                return;
+            }
+            
+            const matchData = {
+                format: format,
+                players_a: gameState.playersA,
+                players_b: gameState.playersB,
+                winner_side: gameState.winner,
+                balls_remaining: gameState.ballsRemaining,
+                foul_black: document.getElementById('foulBlack').checked,
+                ranked: document.getElementById('ranked').checked
+            };
+            
+            try {
+                const response = await fetch(`${API_BASE}/matches`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(matchData)
+                });
+                
+                if (response.ok) {
+                    alert('Partie enregistrée !');
+                    // Réinitialiser
+                    gameState = {
+                        format: format,
+                        playersA: [],
+                        playersB: [],
+                        winner: null,
+                        ballsRemaining: 0,
+                        foulBlack: false,
+                        ranked: true
+                    };
+                    renderPlayerGrid();
+                    updateTeamsDisplay();
+                    document.getElementById('h2hPanel').classList.remove('visible');
+                } else {
+                    alert('Erreur lors de l\'enregistrement');
+                }
+            } catch (error) {
+                console.error('Erreur:', error);
+                alert('Erreur de connexion');
+            }
+        }
+
+        // Chargement du classement
+        async function loadLeaderboard() {
+            const format = document.getElementById('leaderboardFormat').value;
+            const content = document.getElementById('leaderboardContent');
+            
+            try {
+                const response = await fetch(`${API_BASE}/leaderboard/${format}`);
+                const leaderboard = await response.json();
+                
+                let html = '<table class="leaderboard-table"><thead><tr>';
+                html += '<th>Rang</th><th>Nom</th><th>ELO</th><th>V/D</th><th>%</th><th>Série</th>';
+                html += '</tr></thead><tbody>';
+                
+                leaderboard.forEach(entry => {
+                    const rankClass = entry.rank <= 3 ? `rank-${entry.rank}` : '';
+                    const rankDisplay = entry.rank <= 3 ? 
+                        `<span class="rank-medal ${rankClass}">${entry.rank}</span>` : 
+                        entry.rank;
+                    
+                    let streakBadge = '';
+                    if (entry.streak >= 5) {
+                        streakBadge = `<span class="badge badge-win">W${entry.streak}</span>`;
+                    } else if (entry.streak <= -5) {
+                        streakBadge = `<span class="badge badge-loss">L${Math.abs(entry.streak)}</span>`;
+                    }
+                    
+                    html += `<tr>
+                        <td>${rankDisplay}</td>
+                        <td>${entry.entity_name}</td>
+                        <td>${Math.round(entry.rating)}</td>
+                        <td>${entry.wins}/${entry.losses}</td>
+                        <td>${entry.win_rate.toFixed(1)}%</td>
+                        <td>${streakBadge}</td>
+                    </tr>`;
+                });
+                
+                html += '</tbody></table>';
+                content.innerHTML = html;
+                
+            } catch (error) {
+                console.error('Erreur:', error);
+                content.innerHTML = '<p>Erreur de chargement</p>';
+            }
+        }
+
+        // Chargement de l'historique
+        async function loadHistory() {
+            const content = document.getElementById('historyContent');
+            
+            try {
+                const response = await fetch(`${API_BASE}/history?limit=20`);
+                const data = await response.json();
+                
+                let html = '';
+                data.matches.forEach(match => {
+                    const teamA = match.players_a.map(p => p.name).join(' + ');
+                    const teamB = match.players_b.map(p => p.name).join(' + ');
+                    const date = new Date(match.played_at).toLocaleDateString('fr-FR');
+                    
+                    html += `<div class="match-card">
+                        <div class="match-teams">
+                            <div class="${match.winner_side === 'A' ? 'winner' : ''}">${teamA}</div>
+                            <div>vs</div>
+                            <div class="${match.winner_side === 'B' ? 'winner' : ''}">${teamB}</div>
+                        </div>
+                        <div class="match-result">
+                            <div>${date}</div>
+                            <div>${match.balls_remaining} boules</div>
+                            ${match.foul_black ? '<div>🚫 Faute noire</div>' : ''}
+                            ${!match.ranked ? '<div>Non classé</div>' : ''}
+                        </div>
+                    </div>`;
+                });
+                
+                content.innerHTML = html || '<p>Aucune partie enregistrée</p>';
+                
+            } catch (error) {
+                console.error('Erreur:', error);
+                content.innerHTML = '<p>Erreur de chargement</p>';
+            }
+        }
+
+        // Chargement de la page joueurs
+        async function loadPlayersPage() {
+            const content = document.getElementById('playersContent');
+            
+            try {
+                const response = await fetch(`${API_BASE}/players`);
+                const players = await response.json();
+                
+                let html = '<div class="players-list">';
+                players.forEach(player => {
+                    html += `<div class="card" style="margin-bottom: 10px;">
+                        <div style="display: flex; justify-content: space-between; align-items: center;">
+                            <div>
+                                <strong>${player.name}</strong>
+                                ${player.is_guest ? '<span class="badge">Invité</span>' : ''}
+                            </div>
+                            <button class="btn btn-sm" onclick="viewPlayerProfile(${player.id})">
+                                Voir profil
+                            </button>
+                        </div>
+                    </div>`;
+                });
+                html += '</div>';
+                
+                content.innerHTML = html;
+                
+            } catch (error) {
+                console.error('Erreur:', error);
+                content.innerHTML = '<p>Erreur de chargement</p>';
+            }
+        }
+
+        // Modal nouveau joueur (simplifié)
+        function showNewPlayerModal() {
+            const name = prompt('Nom du nouveau joueur:');
+            if (name) {
+                createPlayer(name);
+            }
+        }
+
+        // Créer un nouveau joueur
+        async function createPlayer(name) {
+            try {
+                const response = await fetch(`${API_BASE}/players`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ name: name, is_guest: false })
+                });
+                
+                if (response.ok) {
+                    if (currentPage === 'play') {
+                        loadPlayers();
+                    } else if (currentPage === 'players') {
+                        loadPlayersPage();
+                    }
+                } else {
+                    alert('Ce nom existe déjà');
+                }
+            } catch (error) {
+                console.error('Erreur:', error);
+            }
+        }
+
+        // Admin login
+        async function adminLogin() {
+            const pin = document.getElementById('adminPin').value;
+            
+            try {
+                const response = await fetch(`${API_BASE}/admin/login`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ pin: pin })
+                });
+                
+                if (response.ok) {
+                    const data = await response.json();
+                    adminToken = data.token;
+                    localStorage.setItem('adminToken', adminToken);
+                    
+                    document.getElementById('adminLogin').style.display = 'none';
+                    document.getElementById('adminPanel').style.display = 'block';
+                } else {
+                    alert('PIN incorrect');
+                }
+            } catch (error) {
+                console.error('Erreur:', error);
+            }
+        }
+
+        // Service Worker pour PWA
+        if ('serviceWorker' in navigator) {
+            navigator.serviceWorker.register('/service-worker.js');
+        }
+
+        // Initialisation
+        loadPlayers();
+    </script>
+</body>
+</html>
