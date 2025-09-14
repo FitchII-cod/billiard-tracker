@@ -1,6 +1,7 @@
 from typing import Tuple, Optional
 from sqlalchemy.orm import Session
 from backend.app.models import Rating, TeamRating, Setting
+from datetime import datetime
 import math
 
 class EloCalculator:
@@ -18,6 +19,7 @@ class EloCalculator:
         self.DELTA = float(settings.get('delta', '400'))  # Pour anti-farm
         self.INITIAL_RATING = float(settings.get('initial_rating', '1000'))
         self.TEAM_2V2_SEED = float(settings.get('team_2v2_seed', '1000'))
+        self.WIN_BONUS = float(settings.get('win_bonus', '1'))
     
     def calculate_expected_score(self, rating_a: float, rating_b: float) -> float:
         """Calcule le score attendu selon la formule ELO standard"""
@@ -94,8 +96,16 @@ class EloCalculator:
         delta_a = k_eff_a * margin_factor * (score_a - expected_a)
         delta_b = k_eff_b * margin_factor * (score_b - expected_b)
         
+        if score_a == 1.0:
+            delta_a += self.WIN_BONUS
+        else:
+            delta_b += self.WIN_BONUS
+
         rating_a.rating = old_rating_a + delta_a
         rating_b.rating = old_rating_b + delta_b
+        now = datetime.utcnow()
+        rating_a.last_played = now
+        rating_b.last_played = now
         
         # Mise à jour des stats
         rating_a.games += 1
@@ -166,8 +176,16 @@ class EloCalculator:
         delta_a = k_eff_a * margin_factor * (score_a - expected_a)
         delta_b = k_eff_b * margin_factor * (score_b - expected_b)
         
+        if score_a == 1.0:
+            delta_a += self.WIN_BONUS
+        else:
+            delta_b += self.WIN_BONUS
+
         rating_a.rating = old_rating_a + delta_a
         rating_b.rating = old_rating_b + delta_b
+        now = datetime.utcnow()
+        rating_a.last_played = now
+        rating_b.last_played = now
         
         # Mise à jour des stats
         rating_a.games += 1

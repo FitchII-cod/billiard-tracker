@@ -606,6 +606,17 @@
             </div>
         </div>
 
+        <!-- Page profil -->
+        <div id="page-profile" class="page">
+            <div class="card">
+              <h2 id="profileTitle">Profil</h2>
+              <div id="profileContent">
+                <div class="loading"><div class="spinner"></div></div>
+              </div>
+            </div>
+          </div>
+          
+
         <!-- Page Admin -->
         <div id="page-admin" class="page">
             <div class="card">
@@ -1120,6 +1131,55 @@
                 console.error('Erreur:', error);
             }
         }
+
+        async function viewPlayerProfile(playerId) {
+            // navigue vers la page profil
+            showPage('profile');
+
+            try {
+                const res = await fetch(`${API_BASE}/players/${playerId}/summary`);
+                if (!res.ok) throw new Error('HTTP ' + res.status);
+                const p = await res.json();
+
+                document.getElementById('profileTitle').textContent = `Profil — ${p.player.name}`;
+
+                const lines = [];
+                lines.push(`<p><strong>ELO 1v1 :</strong> ${p.rating_1v1 ? Math.round(p.rating_1v1.rating) : '—'} (${p.rating_1v1 ? p.rating_1v1.wins : 0}V/${p.rating_1v1 ? p.rating_1v1.losses : 0}D, ${p.rating_1v1 ? p.rating_1v1.games : 0} matchs)</p>`);
+                lines.push(`<p><strong>Équipes 2v2 :</strong> ${p.teams.length ? p.teams.map(t => t.name).join(', ') : '—'}</p>`);
+                lines.push(`<hr>`);
+                lines.push(`<h3>Derniers matchs</h3>`);
+                if (!p.recent_matches.length) {
+                lines.push('<p>Aucun match</p>');
+                } else {
+                p.recent_matches.forEach(m => {
+                    const date = new Date(m.played_at).toLocaleString('fr-FR');
+                    const teamA = m.players_a.map(x => x.name).join(' + ');
+                    const teamB = m.players_b.map(x => x.name).join(' + ');
+                    lines.push(
+                    `<div class="match-card">
+                        <div class="match-teams">
+                        <div class="${m.winner_side==='A'?'winner':''}">${teamA}</div>
+                        <div>vs</div>
+                        <div class="${m.winner_side==='B'?'winner':''}">${teamB}</div>
+                        </div>
+                        <div class="match-result">
+                        <div>${date}</div>
+                        <div>${m.balls_remaining} boules</div>
+                        ${m.foul_black ? '<div>🚫 Faute noire</div>' : ''}
+                        ${!m.ranked ? '<div>Non classé</div>' : ''}
+                        </div>
+                    </div>`
+                    );
+                });
+                }
+
+                document.getElementById('profileContent').innerHTML = lines.join('');
+            } catch (e) {
+                document.getElementById('profileContent').innerHTML = `<p>Erreur de chargement du profil.</p>`;
+                console.error(e);
+            }
+        }
+
 
         // Admin login
         async function adminLogin() {
