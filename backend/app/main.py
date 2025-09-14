@@ -1,7 +1,8 @@
-from fastapi import FastAPI, Depends, HTTPException, status
+from fastapi import FastAPI, Depends, HTTPException, status, Body
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from sqlalchemy.orm import Session
+from sqlalchemy import func
 from datetime import datetime, timedelta
 from typing import List, Optional
 import hashlib
@@ -181,6 +182,60 @@ def create_match(match_data: schemas.MatchCreate, db: Session = Depends(get_db))
     
     return response
 
+@app.get("/players/{player_id}/summary")
+def get_player_summary(player_id: int, db: Session = Depends(get_db)):
+    player = db.query(models.Player).filter_by(id=player_id).first()
+    if not player:
+        raise HTTPException(status_code=404, detail="Joueur non trouvé")
+
+    # Rating 1v1 s'il existe
+    rating = db.query(models.Rating).filter_by(player_id=player_id, format="1v1").first()
+
+    # Équipes du joueur
+    teams = (
+        db.query(models.Team)
+        .join(models.TeamMember, models.TeamMember.team_id == models.Team.id)
+        .filter(models.TeamMember.player_id == player_id)
+        .all()
+    )
+
+    # Derniers matchs (tous formats)
+    recent_links = (
+        db.query(models.MatchPlayer)
+        .filter(models.MatchPlayer.player_id == player_id)
+        .all()
+    )
+    match_ids = [ml.match_id for ml in recent_links]
+    recent_matches = []
+    if match_ids:
+        matches = (
+            db.query(models.Match)
+            .filter(models.Match.id.in_(match_ids))
+            .order_by(models.Match.played_at.desc())
+            .limit(20)
+            .all()
+        )
+        for m in matches:
+            players_a = [mp.player for mp in m.players if mp.side == "A"]
+            players_b = [mp.player for mp in m.players if mp.side == "B"]
+            recent_matches.append(
+                schemas.MatchResponse(
+                    id=m.id, format=m.format, played_at=m.played_at,
+                    balls_remaining=m.balls_remaining, winner_side=m.winner_side,
+                    foul_black=m.foul_black, ranked=m.ranked,
+                    players_a=players_a, players_b=players_b,
+                    team_a=m.team_a if m.team_id_a else None,
+                    team_b=m.team_b if m.team_id_b else None
+                )
+            )
+
+    return {
+        "player": schemas.Player.from_orm(player),
+        "rating_1v1": schemas.RatingResponse.from_orm(rating) if rating else None,
+        "teams": [schemas.Team.from_orm(t) for t in teams],
+        "recent_matches": recent_matches
+    }
+
 @app.get("/leaderboard/{format}")
 def get_leaderboard(
     format: str,
@@ -297,11 +352,12 @@ def get_match_history(
 
 @app.post("/head-to-head")
 def get_head_to_head(
-    format: str,
-    players_a: List[int],
-    players_b: List[int],
+    payload: dict = Body(...),
     db: Session = Depends(get_db)
 ):
+    format = payload.get("format")
+    players_a = payload.get("players_a", [])
+    players_b = payload.get("players_b", [])
     """Calculer les statistiques head-to-head entre deux équipes"""
     
     # Canonicaliser les équipes

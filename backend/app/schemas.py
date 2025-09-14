@@ -116,3 +116,4 @@ class AdminSettings(BaseModel):
     delta: Optional[float] = None
     initial_rating: Optional[float] = None
     team_2v2_seed: Optional[float] = None
+    win_bonus: Optional[float] = None
