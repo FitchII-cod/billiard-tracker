@@ -1,8 +1,46 @@
 from typing import Tuple, Optional
 from sqlalchemy.orm import Session
 from backend.app.models import Rating, TeamRating, Setting
-from datetime import datetime
+from datetime import datetime, timezone
+from backend.app import models
 import math
+
+
+def _inc(x, by=1):
+    return (x or 0) + by
+
+def _ensure_rating(db, player_id: int, fmt: str, initial: float):
+    r = db.query(models.Rating).filter_by(player_id=player_id, format=fmt).first()
+    if not r:
+        r = models.Rating(
+            player_id=player_id, format=fmt, rating=initial,
+            games=0, wins=0, losses=0, streak=0
+        )
+        db.add(r)
+        db.flush()
+    else:
+        # “filet de sécu” si des anciennes lignes ont des NULL
+        r.games   = 0 if r.games   is None else r.games
+        r.wins    = 0 if r.wins    is None else r.wins
+        r.losses  = 0 if r.losses  is None else r.losses
+        r.streak  = 0 if r.streak  is None else r.streak
+    return r
+
+def _ensure_team_rating(db, team_id: int, fmt: str, initial: float):
+    tr = db.query(models.TeamRating).filter_by(team_id=team_id, format=fmt).first()
+    if not tr:
+        tr = models.TeamRating(
+            team_id=team_id, format=fmt, rating=initial,
+            games=0, wins=0, losses=0, streak=0
+        )
+        db.add(tr)
+        db.flush()
+    else:
+        tr.games  = 0 if tr.games  is None else tr.games
+        tr.wins   = 0 if tr.wins   is None else tr.wins
+        tr.losses = 0 if tr.losses is None else tr.losses
+        tr.streak = 0 if tr.streak is None else tr.streak
+    return tr
 
 class EloCalculator:
     def __init__(self, db: Session):
@@ -50,52 +88,33 @@ class EloCalculator:
         balls_remaining: int
     ) -> Tuple[float, float]:
         """Met à jour les ratings ELO pour un match 1v1"""
-        
-        # Récupérer ou créer les ratings
-        rating_a = self.db.query(Rating).filter_by(
-            player_id=player_a_id, format='1v1'
-        ).first()
-        
-        if not rating_a:
-            rating_a = Rating(
-                player_id=player_a_id,
-                format='1v1',
-                rating=self.INITIAL_RATING
-            )
-            self.db.add(rating_a)
-        
-        rating_b = self.db.query(Rating).filter_by(
-            player_id=player_b_id, format='1v1'
-        ).first()
-        
-        if not rating_b:
-            rating_b = Rating(
-                player_id=player_b_id,
-                format='1v1',
-                rating=self.INITIAL_RATING
-            )
-            self.db.add(rating_b)
-        
+
+        # Ratings garantis (compteurs à 0 si nouveaux / NULL corrigés)
+        rating_a = _ensure_rating(self.db, player_a_id, '1v1', self.INITIAL_RATING)
+        rating_b = _ensure_rating(self.db, player_b_id, '1v1', self.INITIAL_RATING)
+
         # Calculs ELO
         old_rating_a = rating_a.rating
         old_rating_b = rating_b.rating
-        
+
         expected_a = self.calculate_expected_score(old_rating_a, old_rating_b)
         expected_b = 1 - expected_a
-        
+
         score_a = 1.0 if winner_id == player_a_id else 0.0
         score_b = 1.0 - score_a
-        
-        margin_factor = self.calculate_margin_factor(balls_remaining)
-        
+
+        # Sécurise au cas où balls_remaining soit None
+        margin_factor = self.calculate_margin_factor(balls_remaining or 0)
+
         # K effectif pour chaque joueur
         k_eff_a = self.calculate_k_effective(old_rating_a, old_rating_b, score_a == 1.0)
         k_eff_b = self.calculate_k_effective(old_rating_b, old_rating_a, score_b == 1.0)
-        
+
         # Mise à jour des ratings
         delta_a = k_eff_a * margin_factor * (score_a - expected_a)
         delta_b = k_eff_b * margin_factor * (score_b - expected_b)
-        
+
+        # BONUS minimum au vainqueur (paramétrable via settings.win_bonus)
         if score_a == 1.0:
             delta_a += self.WIN_BONUS
         else:
@@ -103,26 +122,28 @@ class EloCalculator:
 
         rating_a.rating = old_rating_a + delta_a
         rating_b.rating = old_rating_b + delta_b
-        now = datetime.utcnow()
+
+        # Horodatage UTC moderne (évite le warning d’utcnow())
+        now = datetime.now(timezone.utc)
         rating_a.last_played = now
         rating_b.last_played = now
-        
-        # Mise à jour des stats
-        rating_a.games += 1
-        rating_b.games += 1
-        
+
+        # Compteurs robustes (NULL -> 0)
+        rating_a.games = _inc(rating_a.games)
+        rating_b.games = _inc(rating_b.games)
         if score_a == 1.0:
-            rating_a.wins += 1
-            rating_b.losses += 1
-            rating_a.streak = max(1, rating_a.streak + 1) if rating_a.streak >= 0 else 1
-            rating_b.streak = min(-1, rating_b.streak - 1) if rating_b.streak <= 0 else -1
+            rating_a.wins   = _inc(rating_a.wins)
+            rating_b.losses = _inc(rating_b.losses)
+            rating_a.streak = max(1, (rating_a.streak or 0) + 1) if (rating_a.streak or 0) >= 0 else 1
+            rating_b.streak = min(-1, (rating_b.streak or 0) - 1) if (rating_b.streak or 0) <= 0 else -1
         else:
-            rating_a.losses += 1
-            rating_b.wins += 1
-            rating_a.streak = min(-1, rating_a.streak - 1) if rating_a.streak <= 0 else -1
-            rating_b.streak = max(1, rating_b.streak + 1) if rating_b.streak >= 0 else 1
-        
+            rating_a.losses = _inc(rating_a.losses)
+            rating_b.wins   = _inc(rating_b.wins)
+            rating_a.streak = min(-1, (rating_a.streak or 0) - 1) if (rating_a.streak or 0) <= 0 else -1
+            rating_b.streak = max(1, (rating_b.streak or 0) + 1) if (rating_b.streak or 0) >= 0 else 1
+
         return delta_a, delta_b
+
     
     def update_2v2_ratings(
         self,
@@ -132,50 +153,28 @@ class EloCalculator:
         balls_remaining: int
     ) -> Tuple[float, float]:
         """Met à jour les ratings ELO pour un match 2v2 (par équipe)"""
-        
-        # Récupérer ou créer les ratings d'équipe
-        rating_a = self.db.query(TeamRating).filter_by(
-            team_id=team_a_id, format='2v2'
-        ).first()
-        
-        if not rating_a:
-            rating_a = TeamRating(
-                team_id=team_a_id,
-                format='2v2',
-                rating=self.TEAM_2V2_SEED
-            )
-            self.db.add(rating_a)
-        
-        rating_b = self.db.query(TeamRating).filter_by(
-            team_id=team_b_id, format='2v2'
-        ).first()
-        
-        if not rating_b:
-            rating_b = TeamRating(
-                team_id=team_b_id,
-                format='2v2',
-                rating=self.TEAM_2V2_SEED
-            )
-            self.db.add(rating_b)
-        
-        # Calculs ELO (similaire au 1v1 mais avec les ratings d'équipe)
+
+        # Ratings d'équipe garantis
+        rating_a = _ensure_team_rating(self.db, team_a_id, '2v2', self.TEAM_2V2_SEED)
+        rating_b = _ensure_team_rating(self.db, team_b_id, '2v2', self.TEAM_2V2_SEED)
+
         old_rating_a = rating_a.rating
         old_rating_b = rating_b.rating
-        
+
         expected_a = self.calculate_expected_score(old_rating_a, old_rating_b)
         expected_b = 1 - expected_a
-        
+
         score_a = 1.0 if winner_team_id == team_a_id else 0.0
         score_b = 1.0 - score_a
-        
-        margin_factor = self.calculate_margin_factor(balls_remaining)
-        
+
+        margin_factor = self.calculate_margin_factor(balls_remaining or 0)
+
         k_eff_a = self.calculate_k_effective(old_rating_a, old_rating_b, score_a == 1.0)
         k_eff_b = self.calculate_k_effective(old_rating_b, old_rating_a, score_b == 1.0)
-        
+
         delta_a = k_eff_a * margin_factor * (score_a - expected_a)
         delta_b = k_eff_b * margin_factor * (score_b - expected_b)
-        
+
         if score_a == 1.0:
             delta_a += self.WIN_BONUS
         else:
@@ -183,26 +182,26 @@ class EloCalculator:
 
         rating_a.rating = old_rating_a + delta_a
         rating_b.rating = old_rating_b + delta_b
-        now = datetime.utcnow()
+
+        now = datetime.now(timezone.utc)
         rating_a.last_played = now
         rating_b.last_played = now
-        
-        # Mise à jour des stats
-        rating_a.games += 1
-        rating_b.games += 1
-        
+
+        rating_a.games = _inc(rating_a.games)
+        rating_b.games = _inc(rating_b.games)
         if score_a == 1.0:
-            rating_a.wins += 1
-            rating_b.losses += 1
-            rating_a.streak = max(1, rating_a.streak + 1) if rating_a.streak >= 0 else 1
-            rating_b.streak = min(-1, rating_b.streak - 1) if rating_b.streak <= 0 else -1
+            rating_a.wins   = _inc(rating_a.wins)
+            rating_b.losses = _inc(rating_b.losses)
+            rating_a.streak = max(1, (rating_a.streak or 0) + 1) if (rating_a.streak or 0) >= 0 else 1
+            rating_b.streak = min(-1, (rating_b.streak or 0) - 1) if (rating_b.streak or 0) <= 0 else -1
         else:
-            rating_a.losses += 1
-            rating_b.wins += 1
-            rating_a.streak = min(-1, rating_a.streak - 1) if rating_a.streak <= 0 else -1
-            rating_b.streak = max(1, rating_b.streak + 1) if rating_b.streak >= 0 else 1
-        
+            rating_a.losses = _inc(rating_a.losses)
+            rating_b.wins   = _inc(rating_b.wins)
+            rating_a.streak = min(-1, (rating_a.streak or 0) - 1) if (rating_a.streak or 0) <= 0 else -1
+            rating_b.streak = max(1, (rating_b.streak or 0) + 1) if (rating_b.streak or 0) >= 0 else 1
+
         return delta_a, delta_b
+
     
     def get_or_create_team(self, player_ids: list) -> Optional[int]:
         """Trouve ou crée une équipe basée sur les IDs des joueurs"""
