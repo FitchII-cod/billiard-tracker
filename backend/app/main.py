@@ -8,9 +8,8 @@ import hashlib
 import secrets
 import json
 
+from backend.app import models, schemas
 from backend.app.database import SessionLocal, engine, get_db, Base
-from backend.app.models import Player, Team, TeamMember, Match, MatchPlayer, Rating, TeamRating, Setting, AuditLog
-from backend.app.schemas import *
 from backend.app.elo import EloCalculator
 
 # Créer les tables
@@ -48,41 +47,41 @@ def check_admin(token: str = None):
 def read_root():
     return {"message": "Billiard Tracker API", "version": "1.0.0"}
 
-@app.post("/players", response_model=Player)
-def create_player(player: PlayerCreate, db: Session = Depends(get_db)):
+@app.post("/players", response_model=schemas.Player)
+def create_player(player: schemas.PlayerCreate, db: Session = Depends(get_db)):
     """Créer un nouveau joueur"""
     # Vérifier l'unicité du nom
-    existing = db.query(Player).filter_by(name=player.name).first()
+    existing = db.query(models.Player).filter_by(name=player.name).first()
     if existing:
         raise HTTPException(status_code=400, detail="Ce nom existe déjà")
     
-    db_player = Player(**player.dict())
+    db_player = models.Player(**player.model_dump())
     db.add(db_player)
     db.commit()
     db.refresh(db_player)
     return db_player
 
-@app.get("/players", response_model=List[Player])
+@app.get("/players", response_model=List[schemas.Player])
 def get_players(
     include_guests: bool = True,
     db: Session = Depends(get_db)
 ):
     """Récupérer tous les joueurs"""
-    query = db.query(Player)
+    query = db.query(models.Player)
     if not include_guests:
         query = query.filter_by(is_guest=False)
-    return query.order_by(Player.name).all()
+    return query.order_by(models.Player.name).all()
 
-@app.get("/players/{player_id}", response_model=Player)
+@app.get("/players/{player_id}", response_model=schemas.Player)
 def get_player(player_id: int, db: Session = Depends(get_db)):
     """Récupérer un joueur spécifique"""
-    player = db.query(Player).filter_by(id=player_id).first()
+    player = db.query(models.Player).filter_by(id=player_id).first()
     if not player:
         raise HTTPException(status_code=404, detail="Joueur non trouvé")
     return player
 
-@app.post("/matches", response_model=MatchResponse)
-def create_match(match_data: MatchCreate, db: Session = Depends(get_db)):
+@app.post("/matches", response_model=schemas.MatchResponse)
+def create_match(match_data: schemas.MatchCreate, db: Session = Depends(get_db)):
     """Créer un nouveau match"""
     
     # Validation du format et du nombre de joueurs
@@ -106,7 +105,7 @@ def create_match(match_data: MatchCreate, db: Session = Depends(get_db)):
     played_at = match_data.played_at or datetime.utcnow()
     
     # Créer le match
-    db_match = Match(
+    db_match = models.Match(
         format=match_data.format,
         played_at=played_at,
         balls_remaining=match_data.balls_remaining,
@@ -129,11 +128,11 @@ def create_match(match_data: MatchCreate, db: Session = Depends(get_db)):
     
     # Ajouter les joueurs au match
     for player_id in match_data.players_a:
-        mp = MatchPlayer(match_id=db_match.id, player_id=player_id, side="A")
+        mp = models.MatchPlayer(match_id=db_match.id, player_id=player_id, side="A")
         db.add(mp)
     
     for player_id in match_data.players_b:
-        mp = MatchPlayer(match_id=db_match.id, player_id=player_id, side="B")
+        mp = models.MatchPlayer(match_id=db_match.id, player_id=player_id, side="B")
         db.add(mp)
     
     # Mise à jour ELO si match classé
@@ -160,10 +159,10 @@ def create_match(match_data: MatchCreate, db: Session = Depends(get_db)):
     db.refresh(db_match)
     
     # Préparer la réponse
-    players_a = db.query(Player).filter(Player.id.in_(match_data.players_a)).all()
-    players_b = db.query(Player).filter(Player.id.in_(match_data.players_b)).all()
+    players_a = db.query(models.Player).filter(models.Player.id.in_(match_data.players_a)).all()
+    players_b = db.query(models.Player).filter(models.Player.id.in_(match_data.players_b)).all()
     
-    response = MatchResponse(
+    response = schemas.MatchResponse(
         id=db_match.id,
         format=db_match.format,
         played_at=db_match.played_at,
@@ -176,9 +175,9 @@ def create_match(match_data: MatchCreate, db: Session = Depends(get_db)):
     )
     
     if db_match.team_id_a:
-        response.team_a = db.query(Team).filter_by(id=db_match.team_id_a).first()
+        response.team_a = db.query(models.Team).filter_by(id=db_match.team_id_a).first()
     if db_match.team_id_b:
-        response.team_b = db.query(Team).filter_by(id=db_match.team_id_b).first()
+        response.team_b = db.query(models.Team).filter_by(id=db_match.team_id_b).first()
     
     return response
 
@@ -193,13 +192,13 @@ def get_leaderboard(
     
     if format == "1v1":
         # Classement individuel
-        ratings = db.query(Rating).filter_by(format="1v1").order_by(Rating.rating.desc()).limit(limit).all()
+        ratings = db.query(models.Rating).filter_by(format="1v1").order_by(models.Rating.rating.desc()).limit(limit).all()
         
         for idx, rating in enumerate(ratings, 1):
             player = rating.player
             win_rate = (rating.wins / rating.games * 100) if rating.games > 0 else 0
             
-            leaderboard.append(LeaderboardEntry(
+            leaderboard.append(schemas.LeaderboardEntry(
                 rank=idx,
                 entity_name=player.name,
                 entity_id=player.id,
@@ -215,13 +214,13 @@ def get_leaderboard(
     
     elif format == "2v2":
         # Classement par équipe
-        ratings = db.query(TeamRating).filter_by(format="2v2").order_by(TeamRating.rating.desc()).limit(limit).all()
+        ratings = db.query(models.TeamRating).filter_by(format="2v2").order_by(models.TeamRating.rating.desc()).limit(limit).all()
         
         for idx, rating in enumerate(ratings, 1):
             team = rating.team
             win_rate = (rating.wins / rating.games * 100) if rating.games > 0 else 0
             
-            leaderboard.append(LeaderboardEntry(
+            leaderboard.append(schemas.LeaderboardEntry(
                 rank=idx,
                 entity_name=team.name,
                 entity_id=team.id,
@@ -252,19 +251,19 @@ def get_match_history(
     db: Session = Depends(get_db)
 ):
     """Récupérer l'historique des matchs avec filtres"""
-    query = db.query(Match)
+    query = db.query(models.Match)
     
     if format:
-        query = query.filter(Match.format == format)
+        query = query.filter(models.Match.format == format)
     
     if player_id:
-        query = query.join(MatchPlayer).filter(MatchPlayer.player_id == player_id)
+        query = query.join(models.MatchPlayer).filter(models.MatchPlayer.player_id == player_id)
     
     if team_id:
-        query = query.filter((Match.team_id_a == team_id) | (Match.team_id_b == team_id))
+        query = query.filter((models.Match.team_id_a == team_id) | (models.Match.team_id_b == team_id))
     
     total = query.count()
-    matches = query.order_by(Match.played_at.desc()).offset(offset).limit(limit).all()
+    matches = query.order_by(models.Match.played_at.desc()).offset(offset).limit(limit).all()
     
     results = []
     for match in matches:
@@ -272,7 +271,7 @@ def get_match_history(
         players_a = [mp.player for mp in match.players if mp.side == "A"]
         players_b = [mp.player for mp in match.players if mp.side == "B"]
         
-        result = MatchResponse(
+        result = schemas.MatchResponse(
             id=match.id,
             format=match.format,
             played_at=match.played_at,
@@ -310,7 +309,7 @@ def get_head_to_head(
     set_b = set(players_b)
     
     # Rechercher tous les matchs entre ces équipes
-    all_matches = db.query(Match).filter(Match.format == format).all()
+    all_matches = db.query(models.Match).filter(models.Match.format == format).all()
     
     relevant_matches = []
     for match in all_matches:
@@ -323,7 +322,7 @@ def get_head_to_head(
             relevant_matches.append(match)
     
     if not relevant_matches:
-        return HeadToHeadStats(
+        return schemas.HeadToHeadStats(
             total_games=0,
             side_a_wins=0,
             side_b_wins=0,
@@ -368,7 +367,7 @@ def get_head_to_head(
     
     avg_balls = total_balls / len(relevant_matches) if relevant_matches else 0
     
-    return HeadToHeadStats(
+    return schemas.HeadToHeadStats(
         total_games=len(relevant_matches),
         side_a_wins=side_a_wins,
         side_b_wins=len(relevant_matches) - side_a_wins,
@@ -378,15 +377,15 @@ def get_head_to_head(
     )
 
 @app.post("/admin/login")
-def admin_login(login: AdminLogin, db: Session = Depends(get_db)):
+def admin_login(login: schemas.AdminLogin, db: Session = Depends(get_db)):
     """Connexion admin avec PIN"""
     # Récupérer le hash du PIN depuis les settings
-    pin_setting = db.query(Setting).filter_by(key="admin_pin_hash").first()
+    pin_setting = db.query(models.Setting).filter_by(key="admin_pin_hash").first()
     
     if not pin_setting:
         # Premier login : créer le PIN
         hashed = hashlib.sha256(login.pin.encode()).hexdigest()
-        new_setting = Setting(key="admin_pin_hash", value=hashed)
+        new_setting = models.Setting(key="admin_pin_hash", value=hashed)
         db.add(new_setting)
         db.commit()
         pin_setting = new_setting
@@ -407,7 +406,7 @@ def admin_login(login: AdminLogin, db: Session = Depends(get_db)):
 
 @app.post("/admin/settings")
 def update_settings(
-    settings: AdminSettings,
+    settings: schemas.AdminSettings,
     token: str,
     db: Session = Depends(get_db)
 ):
@@ -415,11 +414,11 @@ def update_settings(
     check_admin(token)
     
     for key, value in settings.dict(exclude_unset=True).items():
-        setting = db.query(Setting).filter_by(key=key).first()
+        setting = db.query(models.Setting).filter_by(key=key).first()
         if setting:
             setting.value = str(value)
         else:
-            setting = Setting(key=key, value=str(value))
+            setting = models.Setting(key=key, value=str(value))
             db.add(setting)
     
     db.commit()
@@ -440,8 +439,8 @@ def init_default_settings():
     }
     
     for key, value in defaults.items():
-        if not db.query(Setting).filter_by(key=key).first():
-            setting = Setting(key=key, value=value)
+        if not db.query(models.Setting).filter_by(key=key).first():
+            setting = models.Setting(key=key, value=value)
             db.add(setting)
     
     db.commit()

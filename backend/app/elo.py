@@ -195,7 +195,7 @@ class EloCalculator:
         sorted_ids = sorted(player_ids)
         team_key = f"{sorted_ids[0]}-{sorted_ids[1]}"
         
-        from models import Team, TeamMember, Player
+        from backend.app.models import Team, TeamMember, Player
         
         # Rechercher l'équipe existante
         team = self.db.query(Team).filter_by(key=team_key).first()
