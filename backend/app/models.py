@@ -88,11 +88,11 @@ class Rating(Base):
     
     player_id = Column(Integer, ForeignKey("players.id", ondelete="CASCADE"), primary_key=True)
     format = Column(String, primary_key=True)  # '1v1'
-    rating = Column(Float, default=1000.0)
-    games = Column(Integer, default=0)
-    wins = Column(Integer, default=0)
-    losses = Column(Integer, default=0)
-    streak = Column(Integer, default=0)  # Positif = victoires, Négatif = défaites
+    rating = Column(Float, default=1000.0, nullable=False)
+    games = Column(Integer, default=0, nullable=False, server_default="0")
+    wins = Column(Integer, default=0, nullable=False, server_default="0")
+    losses = Column(Integer, default=0, nullable=False, server_default="0")
+    streak = Column(Integer, default=0, nullable=False, server_default="0")  # Positif = victoires, Négatif = défaites
     last_played = Column(DateTime, nullable=True)
     
     # Relations
@@ -107,11 +107,11 @@ class TeamRating(Base):
     
     team_id = Column(Integer, ForeignKey("teams.id", ondelete="CASCADE"), primary_key=True)
     format = Column(String, primary_key=True)  # '2v2'
-    rating = Column(Float, default=1000.0)
-    games = Column(Integer, default=0)
-    wins = Column(Integer, default=0)
-    losses = Column(Integer, default=0)
-    streak = Column(Integer, default=0)
+    rating = Column(Float, default=1000.0, nullable=False)
+    games = Column(Integer, default=0, nullable=False, server_default="0")
+    wins = Column(Integer, default=0, nullable=False, server_default="0")
+    losses = Column(Integer, default=0, nullable=False, server_default="0")
+    streak = Column(Integer, default=0, nullable=False, server_default="0")
     last_played = Column(DateTime, nullable=True)
     
     # Relations
