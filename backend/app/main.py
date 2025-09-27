@@ -42,6 +42,47 @@ def check_admin(token: str = None):
     
     return admin_sessions[token]
 
+def rebuild_ratings(db: Session):
+    """Recalcule tous les ELO depuis l'historique après une suppression/modification."""
+    # 1) Remise à zéro des ratings individuels et d'équipes
+    db.query(models.Rating).delete()
+    db.query(models.TeamRating).delete()
+    db.commit()
+
+    # 2) Rejouer les matchs classés par date
+    matches = (
+        db.query(models.Match)
+        .order_by(models.Match.played_at.asc(), models.Match.id.asc())
+        .all()
+    )
+    elo_calc = EloCalculator(db)
+
+    for m in matches:
+        if not m.ranked:
+            continue
+
+        # récupérer les joueurs par côté
+        players_a = [mp.player_id for mp in m.players if mp.side == "A"]
+        players_b = [mp.player_id for mp in m.players if mp.side == "B"]
+
+        if m.format == "1v1" and len(players_a) == 1 and len(players_b) == 1:
+            winner_id = players_a[0] if m.winner_side == "A" else players_b[0]
+            elo_calc.update_1v1_ratings(
+                players_a[0], players_b[0],
+                winner_id,
+                m.balls_remaining
+            )
+        elif m.format == "2v2" and len(players_a) == 2 and len(players_b) == 2:
+            # retrouver/créer les équipes comme lors de la création
+            team_a_id = elo_calc.get_or_create_team(players_a)
+            team_b_id = elo_calc.get_or_create_team(players_b)
+            winner_team_id = team_a_id if m.winner_side == "A" else team_b_id
+            elo_calc.update_2v2_ratings(
+                team_a_id, team_b_id, winner_team_id, m.balls_remaining
+            )
+
+    db.commit()
+
 # Routes principales
 
 @app.get("/")
@@ -479,6 +520,59 @@ def update_settings(
     
     db.commit()
     return {"status": "success"}
+
+@app.delete("/admin/matches/{match_id}")
+def delete_match(match_id: int, token: str, db: Session = Depends(get_db)):
+    """Supprimer un match (admin) puis recalculer les ELO."""
+    check_admin(token)
+
+    match = db.query(models.Match).filter_by(id=match_id).first()
+    if not match:
+        raise HTTPException(status_code=404, detail="Match introuvable")
+
+    # Supprime le match (MatchPlayer en cascade)
+    db.delete(match)
+    db.commit()
+
+    # Recalcul global
+    rebuild_ratings(db)
+    return {"status": "ok", "message": "Match supprimé et ELO recalculés"}
+
+@app.delete("/admin/players/{player_id}")
+def delete_player(player_id: int, token: str, db: Session = Depends(get_db)):
+    """Supprimer un joueur (admin) : matches impliqués + ratings + équipes si orphelines."""
+    check_admin(token)
+
+    player = db.query(models.Player).filter_by(id=player_id).first()
+    if not player:
+        raise HTTPException(status_code=404, detail="Joueur introuvable")
+
+    # 1) supprimer tous les matchs où il figure
+    link_rows = db.query(models.MatchPlayer).filter_by(player_id=player_id).all()
+    match_ids = {r.match_id for r in link_rows}
+    if match_ids:
+        db.query(models.Match).filter(models.Match.id.in_(match_ids)).delete(synchronize_session=False)
+
+    # 2) supprimer le joueur (ratings + memberships en cascade)
+    db.delete(player)
+
+    # 3) optionnel: supprimer équipes 2v2 devenues orphelines
+    # (si une équipe n'a plus 2 membres, on la supprime)
+    lone_teams = (
+        db.query(models.Team)
+        .outerjoin(models.TeamMember, models.Team.id == models.TeamMember.team_id)
+        .group_by(models.Team.id)
+        .having(func.count(models.TeamMember.player_id) < 2)
+        .all()
+    )
+    for t in lone_teams:
+        db.delete(t)
+
+    db.commit()
+
+    # 4) rebuild ELO
+    rebuild_ratings(db)
+    return {"status": "ok", "message": "Joueur supprimé et ELO recalculés"}
 
 # Initialisation des paramètres par défaut
 @app.on_event("startup")
