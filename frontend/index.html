@@ -1045,7 +1045,8 @@
                     const teamA = match.players_a.map(p => p.name).join(' + ');
                     const teamB = match.players_b.map(p => p.name).join(' + ');
                     const date = new Date(match.played_at).toLocaleDateString('fr-FR');
-                    
+                    const delBtn = adminToken ? `<button class="btn btn-danger" onclick="deleteMatch(${match.id})">Supprimer</button>` : '';
+
                     html += `<div class="match-card">
                         <div class="match-teams">
                             <div class="${match.winner_side === 'A' ? 'winner' : ''}">${teamA}</div>
@@ -1057,6 +1058,7 @@
                             <div>${match.balls_remaining} boules</div>
                             ${match.foul_black ? '<div>🚫 Faute noire</div>' : ''}
                             ${!match.ranked ? '<div>Non classé</div>' : ''}
+                            ${delBtn}
                         </div>
                     </div>`;
                 });
@@ -1069,6 +1071,22 @@
             }
         }
 
+        async function deleteMatch(matchId) {
+            if (!adminToken) { alert('Admin requis'); return; }
+            if (!confirm('Supprimer ce match ? Cette action recalculera les ELO.')) return;
+            const res = await fetch(`${API_BASE}/admin/matches/${matchId}?token=${encodeURIComponent(adminToken)}`, {
+                method: 'DELETE'
+            });
+            if (res.ok) {
+                alert('Match supprimé. ELO recalculés.');
+                loadHistory(); // refresh
+                loadLeaderboard(); // refresh classement
+            } else {
+                alert('Erreur suppression match');
+            }
+        }
+
+
         // Chargement de la page joueurs
         async function loadPlayersPage() {
             const content = document.getElementById('playersContent');
@@ -1079,18 +1097,28 @@
                 
                 let html = '<div class="players-list">';
                 players.forEach(player => {
+                    const adminBtns = adminToken ? `
+                        <button class="btn btn-danger btn-sm" onclick="deletePlayer(${player.id})">
+                            Supprimer
+                        </button>
+                    ` : '';
+
                     html += `<div class="card" style="margin-bottom: 10px;">
                         <div style="display: flex; justify-content: space-between; align-items: center;">
                             <div>
                                 <strong>${player.name}</strong>
                                 ${player.is_guest ? '<span class="badge">Invité</span>' : ''}
                             </div>
-                            <button class="btn btn-sm" onclick="viewPlayerProfile(${player.id})">
-                                Voir profil
-                            </button>
+                            <div>
+                                <button class="btn btn-sm" onclick="viewPlayerProfile(${player.id})">
+                                    Voir profil
+                                </button>
+                                ${adminBtns}
+                            </div>
                         </div>
                     </div>`;
                 });
+                
                 html += '</div>';
                 
                 content.innerHTML = html;
@@ -1100,6 +1128,29 @@
                 content.innerHTML = '<p>Erreur de chargement</p>';
             }
         }
+
+        async function deletePlayer(playerId) {
+            if (!adminToken) { 
+                alert('Action réservée aux admins'); 
+                return; 
+            }
+            if (!confirm('Supprimer ce joueur et ses matchs ? Les ELO seront recalculés.')) return;
+
+            const res = await fetch(`${API_BASE}/admin/players/${playerId}?token=${encodeURIComponent(adminToken)}`, {
+                method: 'DELETE'
+            });
+
+            if (res.ok) {
+                alert('Joueur supprimé. ELO recalculés.');
+                loadPlayersPage();   // refresh liste joueurs
+                loadLeaderboard();   // refresh classement
+                if (currentPage === 'profile') showPage('players'); // si on était sur le profil
+            } else {
+                const err = await res.json();
+                alert('Erreur suppression joueur: ' + (err.detail || res.status));
+            }
+        }
+        
 
         // Modal nouveau joueur (simplifié)
         function showNewPlayerModal() {
