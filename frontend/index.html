@@ -479,6 +479,7 @@
                         <option value="2v2">2 vs 2</option>
                         <option value="3v3">3 vs 3</option>
                         <option value="1v2">1 vs 2</option>
+                        <option value="2v3">2 vs 3</option>
                     </select>
                 </div>
 
@@ -821,7 +822,8 @@
                 '1v1': { a: 1, b: 1 },
                 '2v2': { a: 2, b: 2 },
                 '3v3': { a: 3, b: 3 },
-                '1v2': { a: 1, b: 2 }
+                '1v2': { a: 1, b: 2 },
+                '2v3': { a: 2, b: 3 }
             };
             return formats[format] || { a: 1, b: 1 };
         }

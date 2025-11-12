@@ -131,7 +131,8 @@ def create_match(match_data: schemas.MatchCreate, db: Session = Depends(get_db))
         "1v1": (1, 1),
         "2v2": (2, 2),
         "3v3": (3, 3),
-        "1v2": (1, 2)
+        "1v2": (1, 2),
+        "2v3": (2, 3)
     }
     
     expected_a, expected_b = format_players.get(match_data.format, (0, 0))
@@ -331,9 +332,68 @@ def get_leaderboard(
             ))
     
     elif format == "global":
-        # Classement global agrégé (à implémenter selon les pondérations)
-        # Pour l'instant, on retourne le 1v1
-        return get_leaderboard("1v1", limit, db)
+        # Classement global agrégé : combine tous les formats
+        from sqlalchemy import func
+
+        # Récupérer tous les ratings de tous les joueurs
+        all_ratings = db.query(models.Rating).all()
+
+        # Agréger par joueur
+        player_stats = {}
+        for rating in all_ratings:
+            player_id = rating.player_id
+            if player_id not in player_stats:
+                player_stats[player_id] = {
+                    'total_games': 0,
+                    'total_wins': 0,
+                    'total_losses': 0,
+                    'weighted_rating_sum': 0.0,
+                    'last_played': None
+                }
+
+            stats = player_stats[player_id]
+            stats['total_games'] += rating.games or 0
+            stats['total_wins'] += rating.wins or 0
+            stats['total_losses'] += rating.losses or 0
+            # Rating pondéré par le nombre de parties
+            stats['weighted_rating_sum'] += rating.rating * (rating.games or 0)
+
+            # Dernière partie jouée (prend la plus récente)
+            if rating.last_played:
+                if stats['last_played'] is None or rating.last_played > stats['last_played']:
+                    stats['last_played'] = rating.last_played
+
+        # Calculer le rating global et créer les entrées du leaderboard
+        for player_id, stats in player_stats.items():
+            if stats['total_games'] > 0:
+                # Rating global = moyenne pondérée
+                global_rating = stats['weighted_rating_sum'] / stats['total_games']
+                win_rate = (stats['total_wins'] / stats['total_games'] * 100) if stats['total_games'] > 0 else 0
+
+                player = db.query(models.Player).filter_by(id=player_id).first()
+                if player:
+                    leaderboard.append(schemas.LeaderboardEntry(
+                        rank=0,  # Sera mis à jour après le tri
+                        entity_name=player.name,
+                        entity_id=player.id,
+                        entity_type="player",
+                        rating=global_rating,
+                        games=stats['total_games'],
+                        wins=stats['total_wins'],
+                        losses=stats['total_losses'],
+                        win_rate=win_rate,
+                        streak=0,  # Pas de streak pour le classement global
+                        last_played=stats['last_played']
+                    ))
+
+        # Trier par rating décroissant
+        leaderboard.sort(key=lambda x: x.rating, reverse=True)
+
+        # Mettre à jour les rangs et limiter
+        for idx, entry in enumerate(leaderboard[:limit], 1):
+            entry.rank = idx
+
+        leaderboard = leaderboard[:limit]
     
     return leaderboard
 

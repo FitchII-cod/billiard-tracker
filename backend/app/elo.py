@@ -50,7 +50,7 @@ class EloCalculator:
     def _load_settings(self):
         """Charge les paramètres depuis la base de données"""
         settings = {s.key: s.value for s in self.db.query(Setting).all()}
-        
+
         self.K_BASE = float(settings.get('k_base', '24'))
         self.ALPHA = float(settings.get('alpha', '0.5'))  # Pour margin of victory
         self.BETA = float(settings.get('beta', '0.5'))   # Pour anti-farm
@@ -58,6 +58,7 @@ class EloCalculator:
         self.INITIAL_RATING = float(settings.get('initial_rating', '1000'))
         self.TEAM_2V2_SEED = float(settings.get('team_2v2_seed', '1000'))
         self.WIN_BONUS = float(settings.get('win_bonus', '1'))
+        self.INFLATION = float(settings.get('inflation', '2.0'))  # Inflation par match
     
     def calculate_expected_score(self, rating_a: float, rating_b: float) -> float:
         """Calcule le score attendu selon la formule ELO standard"""
@@ -120,6 +121,10 @@ class EloCalculator:
         else:
             delta_b += self.WIN_BONUS
 
+        # INFLATION : les deux joueurs gagnent des points à chaque partie
+        delta_a += self.INFLATION
+        delta_b += self.INFLATION
+
         rating_a.rating = old_rating_a + delta_a
         rating_b.rating = old_rating_b + delta_b
 
@@ -179,6 +184,10 @@ class EloCalculator:
             delta_a += self.WIN_BONUS
         else:
             delta_b += self.WIN_BONUS
+
+        # INFLATION : les deux équipes gagnent des points à chaque partie
+        delta_a += self.INFLATION
+        delta_b += self.INFLATION
 
         rating_a.rating = old_rating_a + delta_a
         rating_b.rating = old_rating_b + delta_b
