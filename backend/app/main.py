@@ -598,6 +598,13 @@ def delete_match(match_id: int, token: str, db: Session = Depends(get_db)):
     rebuild_ratings(db)
     return {"status": "ok", "message": "Match supprimé et ELO recalculés"}
 
+@app.post("/admin/rebuild-ratings")
+def rebuild_ratings_endpoint(token: str, db: Session = Depends(get_db)):
+    """Reconstruire tous les ratings ELO (admin)"""
+    check_admin(token)
+    rebuild_ratings(db)
+    return {"status": "ok", "message": "Ratings recalculés avec succès"}
+
 @app.delete("/admin/players/{player_id}")
 def delete_player(player_id: int, token: str, db: Session = Depends(get_db)):
     """Supprimer un joueur (admin) : matches impliqués + ratings + équipes si orphelines."""
