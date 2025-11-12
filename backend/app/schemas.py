@@ -8,6 +8,7 @@ class MatchFormat(str, Enum):
     TWO_V_TWO = "2v2"
     THREE_V_THREE = "3v3"
     ONE_V_TWO = "1v2"
+    TWO_V_THREE = "2v3"
 
 class PlayerBase(BaseModel):
     name: str
@@ -117,3 +118,4 @@ class AdminSettings(BaseModel):
     initial_rating: Optional[float] = None
     team_2v2_seed: Optional[float] = None
     win_bonus: Optional[float] = None
+    inflation: Optional[float] = None
