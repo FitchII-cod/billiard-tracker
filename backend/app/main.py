@@ -332,59 +332,100 @@ def get_leaderboard(
             ))
     
     elif format == "global":
-        # Classement global agrégé : combine tous les formats
+        # Classement global : prend en compte TOUS les matchs du joueur
         from sqlalchemy import func
 
-        # Récupérer tous les ratings de tous les joueurs
-        all_ratings = db.query(models.Rating).all()
+        # Récupérer tous les joueurs
+        all_players = db.query(models.Player).all()
 
-        # Agréger par joueur
-        player_stats = {}
-        for rating in all_ratings:
-            player_id = rating.player_id
-            if player_id not in player_stats:
-                player_stats[player_id] = {
-                    'total_games': 0,
-                    'total_wins': 0,
-                    'total_losses': 0,
-                    'weighted_rating_sum': 0.0,
-                    'last_played': None
-                }
+        for player in all_players:
+            # Récupérer tous les matchs du joueur via MatchPlayer
+            match_participations = (
+                db.query(models.MatchPlayer)
+                .filter(models.MatchPlayer.player_id == player.id)
+                .all()
+            )
 
-            stats = player_stats[player_id]
-            stats['total_games'] += rating.games or 0
-            stats['total_wins'] += rating.wins or 0
-            stats['total_losses'] += rating.losses or 0
-            # Rating pondéré par le nombre de parties
-            stats['weighted_rating_sum'] += rating.rating * (rating.games or 0)
+            if not match_participations:
+                continue
 
-            # Dernière partie jouée (prend la plus récente)
-            if rating.last_played:
-                if stats['last_played'] is None or rating.last_played > stats['last_played']:
-                    stats['last_played'] = rating.last_played
+            # Statistiques globales
+            total_games = 0
+            total_wins = 0
+            total_losses = 0
+            last_played = None
 
-        # Calculer le rating global et créer les entrées du leaderboard
-        for player_id, stats in player_stats.items():
-            if stats['total_games'] > 0:
-                # Rating global = moyenne pondérée
-                global_rating = stats['weighted_rating_sum'] / stats['total_games']
-                win_rate = (stats['total_wins'] / stats['total_games'] * 100) if stats['total_games'] > 0 else 0
+            # Parcourir tous les matchs
+            for mp in match_participations:
+                match = db.query(models.Match).filter_by(id=mp.match_id).first()
+                if not match or not match.ranked:
+                    continue
 
-                player = db.query(models.Player).filter_by(id=player_id).first()
-                if player:
-                    leaderboard.append(schemas.LeaderboardEntry(
-                        rank=0,  # Sera mis à jour après le tri
-                        entity_name=player.name,
-                        entity_id=player.id,
-                        entity_type="player",
-                        rating=global_rating,
-                        games=stats['total_games'],
-                        wins=stats['total_wins'],
-                        losses=stats['total_losses'],
-                        win_rate=win_rate,
-                        streak=0,  # Pas de streak pour le classement global
-                        last_played=stats['last_played']
-                    ))
+                total_games += 1
+
+                # Vérifier si le joueur a gagné
+                if mp.side == match.winner_side:
+                    total_wins += 1
+                else:
+                    total_losses += 1
+
+                # Dernière partie jouée
+                if last_played is None or match.played_at > last_played:
+                    last_played = match.played_at
+
+            if total_games == 0:
+                continue
+
+            # Calculer le rating global : moyenne de tous les ratings du joueur
+            ratings_sum = 0.0
+            ratings_count = 0
+
+            # Ratings individuels (1v1, 1v2, 2v3, 3v3)
+            individual_ratings = db.query(models.Rating).filter_by(player_id=player.id).all()
+            for rating in individual_ratings:
+                if (rating.games or 0) > 0:
+                    ratings_sum += rating.rating
+                    ratings_count += 1
+
+            # Ratings d'équipes (2v2)
+            team_memberships = (
+                db.query(models.TeamMember)
+                .filter(models.TeamMember.player_id == player.id)
+                .all()
+            )
+            for tm in team_memberships:
+                team_ratings = (
+                    db.query(models.TeamRating)
+                    .filter(models.TeamRating.team_id == tm.team_id)
+                    .all()
+                )
+                for tr in team_ratings:
+                    if (tr.games or 0) > 0:
+                        ratings_sum += tr.rating
+                        ratings_count += 1
+
+            # Rating global = moyenne de tous les ratings
+            if ratings_count > 0:
+                global_rating = ratings_sum / ratings_count
+            else:
+                # Si pas de ratings, utiliser le rating initial
+                global_rating = 1000.0
+
+            win_rate = (total_wins / total_games * 100) if total_games > 0 else 0
+
+            leaderboard.append(schemas.LeaderboardEntry(
+                rank=0,
+                entity_name=player.name,
+                entity_id=player.id,
+                entity_type="player",
+                rating=global_rating,
+                games=total_games,
+                wins=total_wins,
+                losses=total_losses,
+                win_rate=win_rate,
+                streak=0,
+                last_played=last_played
+            ))
 
         # Trier par rating décroissant
         leaderboard.sort(key=lambda x: x.rating, reverse=True)
