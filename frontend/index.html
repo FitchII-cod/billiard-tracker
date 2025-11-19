@@ -776,6 +776,14 @@
                 case 'players':
                     loadPlayersPage();
                     break;
+                case 'admin':
+                    // Si déjà connecté, afficher le panel
+                    if (adminToken) {
+                        document.getElementById('adminLogin').style.display = 'none';
+                        document.getElementById('adminPanel').style.display = 'block';
+                        loadAdminSettings();
+                    }
+                    break;
             }
         }
 
@@ -1275,11 +1283,34 @@
 
                     document.getElementById('adminLogin').style.display = 'none';
                     document.getElementById('adminPanel').style.display = 'block';
+
+                    // Charger les paramètres actuels
+                    await loadAdminSettings();
                 } else {
                     alert('PIN incorrect');
                 }
             } catch (error) {
                 console.error('Erreur:', error);
+            }
+        }
+
+        async function loadAdminSettings() {
+            if (!adminToken) return;
+
+            try {
+                const response = await fetch(`${API_BASE}/admin/settings?token=${encodeURIComponent(adminToken)}`);
+                if (response.ok) {
+                    const settings = await response.json();
+
+                    // Pré-remplir les champs avec les valeurs actuelles
+                    if (settings.k_base) document.getElementById('kBase').value = settings.k_base;
+                    if (settings.alpha) document.getElementById('alpha').value = settings.alpha;
+                    if (settings.beta) document.getElementById('beta').value = settings.beta;
+                    if (settings.delta) document.getElementById('delta').value = settings.delta;
+                    if (settings.inflation) document.getElementById('inflation').value = settings.inflation;
+                }
+            } catch (error) {
+                console.error('Erreur lors du chargement des paramètres:', error);
             }
         }
 
@@ -1335,6 +1366,39 @@
                     loadLeaderboard(); // Rafraîchir le classement
                 } else {
                     alert('Erreur lors du recalcul');
+                }
+            } catch (error) {
+                console.error('Erreur:', error);
+                alert('Erreur de connexion');
+            }
+        }
+
+        async function exportData() {
+            if (!adminToken) {
+                alert('Vous devez être connecté en tant qu\'admin');
+                return;
+            }
+
+            try {
+                const response = await fetch(`${API_BASE}/admin/export?token=${encodeURIComponent(adminToken)}`);
+
+                if (response.ok) {
+                    const data = await response.json();
+
+                    // Créer un blob et télécharger le fichier JSON
+                    const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+                    const url = URL.createObjectURL(blob);
+                    const a = document.createElement('a');
+                    a.href = url;
+                    a.download = `billiard-tracker-export-${new Date().toISOString().split('T')[0]}.json`;
+                    document.body.appendChild(a);
+                    a.click();
+                    document.body.removeChild(a);
+                    URL.revokeObjectURL(url);
+
+                    alert('Export réussi !');
+                } else {
+                    alert('Erreur lors de l\'export');
                 }
             } catch (error) {
                 console.error('Erreur:', error);

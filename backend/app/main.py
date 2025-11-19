@@ -136,13 +136,12 @@ def create_match(match_data: schemas.MatchCreate, db: Session = Depends(get_db))
     }
     
     expected_a, expected_b = format_players.get(match_data.format, (0, 0))
-    
+
     if len(match_data.players_a) != expected_a or len(match_data.players_b) != expected_b:
-        if match_data.format != "1v2" or (len(match_data.players_a) != 2 or len(match_data.players_b) != 1):
-            raise HTTPException(
-                status_code=400, 
-                detail=f"Format {match_data.format} requiert {expected_a} joueur(s) côté A et {expected_b} côté B"
-            )
+        raise HTTPException(
+            status_code=400,
+            detail=f"Format {match_data.format} requiert {expected_a} joueur(s) côté A et {expected_b} côté B"
+        )
     
     # Date par défaut = maintenant
     played_at = match_data.played_at or datetime.utcnow()
@@ -569,15 +568,15 @@ def update_settings(
 ):
     """Mettre à jour les paramètres admin"""
     check_admin(token)
-    
-    for key, value in settings.dict(exclude_unset=True).items():
+
+    for key, value in settings.model_dump(exclude_unset=True).items():
         setting = db.query(models.Setting).filter_by(key=key).first()
         if setting:
             setting.value = str(value)
         else:
             setting = models.Setting(key=key, value=str(value))
             db.add(setting)
-    
+
     db.commit()
     return {"status": "success"}
 
@@ -604,6 +603,107 @@ def rebuild_ratings_endpoint(token: str, db: Session = Depends(get_db)):
     check_admin(token)
     rebuild_ratings(db)
     return {"status": "ok", "message": "Ratings recalculés avec succès"}
+
+@app.get("/admin/settings")
+def get_settings(token: str, db: Session = Depends(get_db)):
+    """Récupérer les paramètres actuels (admin)"""
+    check_admin(token)
+
+    settings = {s.key: s.value for s in db.query(models.Setting).all()}
+    return settings
+
+@app.get("/admin/export")
+def export_data(token: str, db: Session = Depends(get_db)):
+    """Exporter toutes les données en JSON (admin)"""
+    check_admin(token)
+
+    # Exporter tous les joueurs
+    players = db.query(models.Player).all()
+    players_data = [
+        {
+            "id": p.id,
+            "name": p.name,
+            "is_guest": p.is_guest,
+            "created_at": p.created_at.isoformat()
+        }
+        for p in players
+    ]
+
+    # Exporter tous les matchs
+    matches = db.query(models.Match).all()
+    matches_data = []
+    for m in matches:
+        players_a = [mp.player_id for mp in m.players if mp.side == "A"]
+        players_b = [mp.player_id for mp in m.players if mp.side == "B"]
+        matches_data.append({
+            "id": m.id,
+            "format": m.format,
+            "played_at": m.played_at.isoformat(),
+            "balls_remaining": m.balls_remaining,
+            "winner_side": m.winner_side,
+            "foul_black": m.foul_black,
+            "ranked": m.ranked,
+            "players_a": players_a,
+            "players_b": players_b,
+            "team_id_a": m.team_id_a,
+            "team_id_b": m.team_id_b
+        })
+
+    # Exporter tous les ratings
+    ratings = db.query(models.Rating).all()
+    ratings_data = [
+        {
+            "player_id": r.player_id,
+            "format": r.format,
+            "rating": r.rating,
+            "games": r.games,
+            "wins": r.wins,
+            "losses": r.losses,
+            "streak": r.streak,
+            "last_played": r.last_played.isoformat() if r.last_played else None
+        }
+        for r in ratings
+    ]
+
+    # Exporter les équipes et team ratings
+    teams = db.query(models.Team).all()
+    teams_data = [
+        {
+            "id": t.id,
+            "key": t.key,
+            "name": t.name,
+            "created_at": t.created_at.isoformat(),
+            "members": [tm.player_id for tm in t.members]
+        }
+        for t in teams
+    ]
+
+    team_ratings = db.query(models.TeamRating).all()
+    team_ratings_data = [
+        {
+            "team_id": tr.team_id,
+            "format": tr.format,
+            "rating": tr.rating,
+            "games": tr.games,
+            "wins": tr.wins,
+            "losses": tr.losses,
+            "streak": tr.streak,
+            "last_played": tr.last_played.isoformat() if tr.last_played else None
+        }
+        for tr in team_ratings
+    ]
+
+    settings = {s.key: s.value for s in db.query(models.Setting).all()}
+
+    return {
+        "export_date": datetime.utcnow().isoformat(),
+        "players": players_data,
+        "matches": matches_data,
+        "ratings": ratings_data,
+        "teams": teams_data,
+        "team_ratings": team_ratings_data,
+        "settings": settings
+    }
 
 @app.delete("/admin/players/{player_id}")
 def delete_player(player_id: int, token: str, db: Session = Depends(get_db)):
@@ -652,7 +752,9 @@ def init_default_settings():
         "beta": "0.5",
         "delta": "400",
         "initial_rating": "1000",
-        "team_2v2_seed": "1000"
+        "team_2v2_seed": "1000",
+        "inflation": "2.0",
+        "win_bonus": "1.0"
     }
     
     for key, value in defaults.items():
