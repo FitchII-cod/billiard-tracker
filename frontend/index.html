@@ -562,9 +562,13 @@
                 
                 <div class="form-group">
                     <select id="leaderboardFormat" onchange="loadLeaderboard()">
+                        <option value="global">Global (tous formats)</option>
                         <option value="1v1">1 vs 1</option>
-                        <option value="2v2">2 vs 2</option>
-                        <option value="global">Global</option>
+                        <option value="2v2">2 vs 2 (équipes)</option>
+                        <option value="2v2_individual">2 vs 2 (individuel)</option>
+                        <option value="3v3">3 vs 3</option>
+                        <option value="1v2">1 vs 2</option>
+                        <option value="2v3">2 vs 3</option>
                     </select>
                 </div>
 
@@ -1228,33 +1232,79 @@
                 document.getElementById('profileTitle').textContent = `Profil — ${p.player.name}`;
 
                 const lines = [];
-                lines.push(`<p><strong>ELO 1v1 :</strong> ${p.rating_1v1 ? Math.round(p.rating_1v1.rating) : '—'} (${p.rating_1v1 ? p.rating_1v1.wins : 0}V/${p.rating_1v1 ? p.rating_1v1.losses : 0}D, ${p.rating_1v1 ? p.rating_1v1.games : 0} matchs)</p>`);
-                lines.push(`<p><strong>Équipes 2v2 :</strong> ${p.teams.length ? p.teams.map(t => t.name).join(', ') : '—'}</p>`);
-                lines.push(`<hr>`);
-                lines.push(`<h3>Derniers matchs</h3>`);
-                if (!p.recent_matches.length) {
-                lines.push('<p>Aucun match</p>');
-                } else {
-                p.recent_matches.forEach(m => {
-                    const date = new Date(m.played_at).toLocaleString('fr-FR');
-                    const teamA = m.players_a.map(x => x.name).join(' + ');
-                    const teamB = m.players_b.map(x => x.name).join(' + ');
-                    lines.push(
-                    `<div class="match-card">
-                        <div class="match-teams">
-                        <div class="${m.winner_side==='A'?'winner':''}">${teamA}</div>
-                        <div>vs</div>
-                        <div class="${m.winner_side==='B'?'winner':''}">${teamB}</div>
-                        </div>
-                        <div class="match-result">
-                        <div>${date}</div>
-                        <div>${m.balls_remaining} boules</div>
-                        ${m.foul_black ? '<div>🚫 Faute noire</div>' : ''}
-                        ${!m.ranked ? '<div>Non classé</div>' : ''}
-                        </div>
-                    </div>`
-                    );
+
+                // Stats globales
+                if (p.global_stats && p.global_stats.games > 0) {
+                    lines.push(`<div class="card" style="background: rgba(212, 175, 55, 0.2); margin-bottom: 15px;">`);
+                    lines.push(`<h3 style="color: var(--secondary);">Stats Globales</h3>`);
+                    lines.push(`<div class="h2h-stats">`);
+                    lines.push(`<div class="stat-item"><div class="stat-value">${Math.round(p.global_stats.rating)}</div><div class="stat-label">ELO Global</div></div>`);
+                    lines.push(`<div class="stat-item"><div class="stat-value">${p.global_stats.games}</div><div class="stat-label">Parties</div></div>`);
+                    lines.push(`<div class="stat-item"><div class="stat-value">${p.global_stats.wins}/${p.global_stats.losses}</div><div class="stat-label">V/D</div></div>`);
+                    lines.push(`<div class="stat-item"><div class="stat-value">${p.global_stats.win_rate}%</div><div class="stat-label">Win Rate</div></div>`);
+                    lines.push(`</div></div>`);
+                }
+
+                // Ratings par format
+                lines.push(`<h3>Ratings par format</h3>`);
+                const formats = ['1v1', '2v2', '3v3', '1v2', '2v3'];
+                const formatLabels = {'1v1': '1 vs 1', '2v2': '2 vs 2', '3v3': '3 vs 3', '1v2': '1 vs 2', '2v3': '2 vs 3'};
+
+                lines.push(`<div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 10px; margin-bottom: 15px;">`);
+                formats.forEach(fmt => {
+                    const r = p.ratings ? p.ratings[fmt] : null;
+                    if (r && r.games > 0) {
+                        const streakText = r.streak > 0 ? `+${r.streak}` : r.streak < 0 ? `${r.streak}` : '0';
+                        const streakColor = r.streak > 0 ? 'var(--success)' : r.streak < 0 ? 'var(--danger)' : 'inherit';
+                        lines.push(`<div class="stat-item">
+                            <div class="stat-value">${Math.round(r.rating)}</div>
+                            <div class="stat-label">${formatLabels[fmt]}</div>
+                            <div style="font-size: 11px; margin-top: 4px;">${r.wins}V/${r.losses}D (${r.games})</div>
+                            <div style="font-size: 11px; color: ${streakColor};">Série: ${streakText}</div>
+                        </div>`);
+                    } else {
+                        lines.push(`<div class="stat-item" style="opacity: 0.5;">
+                            <div class="stat-value">—</div>
+                            <div class="stat-label">${formatLabels[fmt]}</div>
+                            <div style="font-size: 11px; margin-top: 4px;">Aucune partie</div>
+                        </div>`);
+                    }
                 });
+                lines.push(`</div>`);
+
+                // Équipes 2v2
+                if (p.teams && p.teams.length > 0) {
+                    lines.push(`<h3>Équipes 2v2</h3>`);
+                    lines.push(`<p>${p.teams.map(t => t.name).join(', ')}</p>`);
+                }
+
+                lines.push(`<hr style="margin: 15px 0; border-color: rgba(255,255,255,0.2);">`);
+
+                // Derniers matchs
+                lines.push(`<h3>Derniers matchs</h3>`);
+                if (!p.recent_matches || !p.recent_matches.length) {
+                    lines.push('<p>Aucun match</p>');
+                } else {
+                    p.recent_matches.forEach(m => {
+                        const date = new Date(m.played_at).toLocaleString('fr-FR');
+                        const teamA = m.players_a.map(x => x.name).join(' + ');
+                        const teamB = m.players_b.map(x => x.name).join(' + ');
+                        lines.push(
+                        `<div class="match-card">
+                            <div class="match-teams">
+                            <div class="${m.winner_side==='A'?'winner':''}">${teamA}</div>
+                            <div>vs</div>
+                            <div class="${m.winner_side==='B'?'winner':''}">${teamB}</div>
+                            </div>
+                            <div class="match-result">
+                            <div>${date}</div>
+                            <div>${m.format} • ${m.balls_remaining} boules</div>
+                            ${m.foul_black ? '<div>🚫 Faute noire</div>' : ''}
+                            ${!m.ranked ? '<div>Non classé</div>' : ''}
+                            </div>
+                        </div>`
+                        );
+                    });
                 }
 
                 document.getElementById('profileContent').innerHTML = lines.join('');
