@@ -157,7 +157,7 @@ class EloCalculator:
         winner_team_id: int,
         balls_remaining: int
     ) -> Tuple[float, float]:
-        """Met à jour les ratings ELO pour un match 2v2 (par équipe)"""
+        """Met à jour les ratings ELO pour un match 2v2 (par équipe ET par joueur individuel)"""
 
         # Ratings d'équipe garantis
         rating_a = _ensure_team_rating(self.db, team_a_id, '2v2', self.TEAM_2V2_SEED)
@@ -208,6 +208,99 @@ class EloCalculator:
             rating_b.wins   = _inc(rating_b.wins)
             rating_a.streak = min(-1, (rating_a.streak or 0) - 1) if (rating_a.streak or 0) <= 0 else -1
             rating_b.streak = max(1, (rating_b.streak or 0) + 1) if (rating_b.streak or 0) >= 0 else 1
+
+        # NOUVEAU : Mettre à jour les ratings INDIVIDUELS des joueurs pour le format 2v2
+        # Récupérer les membres des équipes
+        from backend.app.models import TeamMember
+        members_a = self.db.query(TeamMember).filter_by(team_id=team_a_id).all()
+        members_b = self.db.query(TeamMember).filter_by(team_id=team_b_id).all()
+
+        players_a = [m.player_id for m in members_a]
+        players_b = [m.player_id for m in members_b]
+
+        # Mettre à jour les ratings individuels des joueurs de l'équipe A
+        for player_id in players_a:
+            self._update_individual_team_rating(player_id, '2v2', delta_a, score_a == 1.0, now)
+
+        # Mettre à jour les ratings individuels des joueurs de l'équipe B
+        for player_id in players_b:
+            self._update_individual_team_rating(player_id, '2v2', delta_b, score_b == 1.0, now)
+
+        return delta_a, delta_b
+
+    def _update_individual_team_rating(
+        self,
+        player_id: int,
+        fmt: str,
+        delta: float,
+        is_winner: bool,
+        now: datetime
+    ):
+        """Met à jour le rating individuel d'un joueur pour un format d'équipe"""
+        rating = _ensure_rating(self.db, player_id, fmt, self.INITIAL_RATING)
+
+        rating.rating += delta
+        rating.last_played = now
+        rating.games = _inc(rating.games)
+
+        if is_winner:
+            rating.wins = _inc(rating.wins)
+            rating.streak = max(1, (rating.streak or 0) + 1) if (rating.streak or 0) >= 0 else 1
+        else:
+            rating.losses = _inc(rating.losses)
+            rating.streak = min(-1, (rating.streak or 0) - 1) if (rating.streak or 0) <= 0 else -1
+
+    def update_team_ratings(
+        self,
+        players_a: list,
+        players_b: list,
+        winner_side: str,
+        balls_remaining: int,
+        fmt: str
+    ) -> Tuple[float, float]:
+        """Met à jour les ratings ELO pour un match d'équipe (3v3, 1v2, 2v3, etc.)
+
+        Calcule le rating moyen de chaque côté, puis applique le delta à chaque joueur.
+        """
+        # Calculer le rating moyen de chaque côté
+        ratings_a = [_ensure_rating(self.db, pid, fmt, self.INITIAL_RATING) for pid in players_a]
+        ratings_b = [_ensure_rating(self.db, pid, fmt, self.INITIAL_RATING) for pid in players_b]
+
+        avg_rating_a = sum(r.rating for r in ratings_a) / len(ratings_a)
+        avg_rating_b = sum(r.rating for r in ratings_b) / len(ratings_b)
+
+        expected_a = self.calculate_expected_score(avg_rating_a, avg_rating_b)
+        expected_b = 1 - expected_a
+
+        score_a = 1.0 if winner_side == "A" else 0.0
+        score_b = 1.0 - score_a
+
+        margin_factor = self.calculate_margin_factor(balls_remaining or 0)
+
+        k_eff_a = self.calculate_k_effective(avg_rating_a, avg_rating_b, score_a == 1.0)
+        k_eff_b = self.calculate_k_effective(avg_rating_b, avg_rating_a, score_b == 1.0)
+
+        delta_a = k_eff_a * margin_factor * (score_a - expected_a)
+        delta_b = k_eff_b * margin_factor * (score_b - expected_b)
+
+        if score_a == 1.0:
+            delta_a += self.WIN_BONUS
+        else:
+            delta_b += self.WIN_BONUS
+
+        # INFLATION : tous les joueurs gagnent des points à chaque partie
+        delta_a += self.INFLATION
+        delta_b += self.INFLATION
+
+        now = datetime.now(timezone.utc)
+
+        # Appliquer le delta à chaque joueur du côté A
+        for player_id in players_a:
+            self._update_individual_team_rating(player_id, fmt, delta_a, score_a == 1.0, now)
+
+        # Appliquer le delta à chaque joueur du côté B
+        for player_id in players_b:
+            self._update_individual_team_rating(player_id, fmt, delta_b, score_b == 1.0, now)
 
         return delta_a, delta_b
 
