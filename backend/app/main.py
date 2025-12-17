@@ -80,6 +80,15 @@ def rebuild_ratings(db: Session):
             elo_calc.update_2v2_ratings(
                 team_a_id, team_b_id, winner_team_id, m.balls_remaining
             )
+        elif m.format in ("3v3", "1v2", "2v3"):
+            # Mise à jour des ratings individuels pour les autres formats d'équipe
+            elo_calc.update_team_ratings(
+                players_a,
+                players_b,
+                m.winner_side,
+                m.balls_remaining,
+                m.format
+            )
 
     db.commit()
 
@@ -196,6 +205,15 @@ def create_match(match_data: schemas.MatchCreate, db: Session = Depends(get_db))
                 winner_team_id,
                 match_data.balls_remaining
             )
+        elif match_data.format in ("3v3", "1v2", "2v3"):
+            # Mise à jour des ratings individuels pour les autres formats d'équipe
+            elo_calc.update_team_ratings(
+                match_data.players_a,
+                match_data.players_b,
+                match_data.winner_side,
+                match_data.balls_remaining,
+                match_data.format
+            )
     
     db.commit()
     db.refresh(db_match)
@@ -229,8 +247,17 @@ def get_player_summary(player_id: int, db: Session = Depends(get_db)):
     if not player:
         raise HTTPException(status_code=404, detail="Joueur non trouvé")
 
-    # Rating 1v1 s'il existe
-    rating = db.query(models.Rating).filter_by(player_id=player_id, format="1v1").first()
+    # Récupérer tous les ratings du joueur (tous les formats)
+    all_ratings = db.query(models.Rating).filter_by(player_id=player_id).all()
+    ratings_by_format = {r.format: schemas.RatingResponse.from_orm(r) for r in all_ratings}
+
+    # Calculer le rating global
+    total_games = sum((r.games or 0) for r in all_ratings)
+    total_wins = sum((r.wins or 0) for r in all_ratings)
+    total_losses = sum((r.losses or 0) for r in all_ratings)
+    weighted_rating_sum = sum(r.rating * (r.games or 0) for r in all_ratings)
+    global_rating = weighted_rating_sum / total_games if total_games > 0 else 1000.0
+    global_win_rate = (total_wins / total_games * 100) if total_games > 0 else 0
 
     # Équipes du joueur
     teams = (
@@ -272,7 +299,15 @@ def get_player_summary(player_id: int, db: Session = Depends(get_db)):
 
     return {
         "player": schemas.Player.from_orm(player),
-        "rating_1v1": schemas.RatingResponse.from_orm(rating) if rating else None,
+        "rating_1v1": ratings_by_format.get("1v1"),
+        "ratings": ratings_by_format,  # Tous les ratings par format
+        "global_stats": {
+            "rating": round(global_rating, 2),
+            "games": total_games,
+            "wins": total_wins,
+            "losses": total_losses,
+            "win_rate": round(global_win_rate, 2)
+        },
         "teams": [schemas.Team.from_orm(t) for t in teams],
         "recent_matches": recent_matches
     }
@@ -311,11 +346,11 @@ def get_leaderboard(
     elif format == "2v2":
         # Classement par équipe
         ratings = db.query(models.TeamRating).filter_by(format="2v2").order_by(models.TeamRating.rating.desc()).limit(limit).all()
-        
+
         for idx, rating in enumerate(ratings, 1):
             team = rating.team
             win_rate = (rating.wins / rating.games * 100) if rating.games > 0 else 0
-            
+
             leaderboard.append(schemas.LeaderboardEntry(
                 rank=idx,
                 entity_name=team.name,
@@ -329,7 +364,30 @@ def get_leaderboard(
                 streak=rating.streak,
                 last_played=rating.last_played
             ))
-    
+
+    elif format in ("3v3", "1v2", "2v3", "2v2_individual"):
+        # Classement individuel pour les formats d'équipe
+        target_format = "2v2" if format == "2v2_individual" else format
+        ratings = db.query(models.Rating).filter_by(format=target_format).order_by(models.Rating.rating.desc()).limit(limit).all()
+
+        for idx, rating in enumerate(ratings, 1):
+            player = rating.player
+            win_rate = (rating.wins / rating.games * 100) if rating.games > 0 else 0
+
+            leaderboard.append(schemas.LeaderboardEntry(
+                rank=idx,
+                entity_name=player.name,
+                entity_id=player.id,
+                entity_type="player",
+                rating=rating.rating,
+                games=rating.games,
+                wins=rating.wins,
+                losses=rating.losses,
+                win_rate=win_rate,
+                streak=rating.streak,
+                last_played=rating.last_played
+            ))
+
     elif format == "global":
         # Classement global agrégé : combine tous les formats
         from sqlalchemy import func
