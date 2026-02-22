@@ -308,7 +308,7 @@ def get_player_summary(player_id: int, db: Session = Depends(get_db)):
             "losses": total_losses,
             "win_rate": round(global_win_rate, 2)
         },
-        "teams": [schemas.Team.from_orm(t) for t in teams],
+        "teams": [schemas.TeamSimple.from_orm(t) for t in teams],
         "recent_matches": recent_matches
     }
 
