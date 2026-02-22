@@ -202,6 +202,11 @@
             color: var(--dark);
         }
 
+        .btn-sm {
+            padding: 6px 12px;
+            font-size: 13px;
+        }
+
         .btn-block {
             width: 100%;
         }
@@ -618,6 +623,9 @@
 
         <!-- Page profil -->
         <div id="page-profile" class="page">
+            <button class="btn btn-sm" onclick="showPage('players')" style="margin-bottom: 15px; opacity: 0.8;">
+                ← Retour aux joueurs
+            </button>
             <div class="card">
               <h2 id="profileTitle">Profil</h2>
               <div id="profileContent">
@@ -1050,9 +1058,13 @@
                         streakBadge = `<span class="badge badge-loss">L${Math.abs(entry.streak)}</span>`;
                     }
                     
+                    const nameCell = entry.entity_type === 'player'
+                        ? `<a href="#" onclick="viewPlayerProfile(${entry.entity_id}); return false;" style="color: var(--secondary); text-decoration: underline; cursor: pointer;">${entry.entity_name}</a>`
+                        : entry.entity_name;
+
                     html += `<tr>
                         <td>${rankDisplay}</td>
-                        <td>${entry.entity_name}</td>
+                        <td>${nameCell}</td>
                         <td>${Math.round(entry.rating)}</td>
                         <td>${entry.wins}/${entry.losses}</td>
                         <td>${entry.win_rate.toFixed(1)}%</td>
@@ -1069,44 +1081,65 @@
             }
         }
 
+        // Stocke les matchs chargés pour le filtrage local
+        let loadedMatches = [];
+
         // Chargement de l'historique
         async function loadHistory() {
             const content = document.getElementById('historyContent');
-            
-            try {
-                const response = await fetch(`${API_BASE}/history?limit=20`);
-                const data = await response.json();
-                
-                let html = '';
-                data.matches.forEach(match => {
-                    const teamA = match.players_a.map(p => p.name).join(' + ');
-                    const teamB = match.players_b.map(p => p.name).join(' + ');
-                    const date = new Date(match.played_at).toLocaleDateString('fr-FR');
-                    const delBtn = adminToken ? `<button class="btn btn-danger" onclick="deleteMatch(${match.id})">Supprimer</button>` : '';
 
-                    html += `<div class="match-card">
-                        <div class="match-teams">
-                            <div class="${match.winner_side === 'A' ? 'winner' : ''}">${teamA}</div>
-                            <div>vs</div>
-                            <div class="${match.winner_side === 'B' ? 'winner' : ''}">${teamB}</div>
-                        </div>
-                        <div class="match-result">
-                            <div>${date}</div>
-                            <div>${match.balls_remaining} boules</div>
-                            ${match.foul_black ? '<div>🚫 Faute noire</div>' : ''}
-                            ${!match.ranked ? '<div>Non classé</div>' : ''}
-                            ${delBtn}
-                        </div>
-                    </div>`;
-                });
-                
-                content.innerHTML = html || '<p>Aucune partie enregistrée</p>';
-                
+            try {
+                const response = await fetch(`${API_BASE}/history?limit=50`);
+                const data = await response.json();
+                loadedMatches = data.matches;
+                renderHistory(loadedMatches);
             } catch (error) {
                 console.error('Erreur:', error);
                 content.innerHTML = '<p>Erreur de chargement</p>';
             }
         }
+
+        function renderHistory(matches) {
+            const content = document.getElementById('historyContent');
+            let html = '';
+            matches.forEach(match => {
+                const teamA = match.players_a.map(p => p.name).join(' + ');
+                const teamB = match.players_b.map(p => p.name).join(' + ');
+                const date = new Date(match.played_at).toLocaleDateString('fr-FR');
+                const delBtn = adminToken ? `<button class="btn btn-danger btn-sm" onclick="deleteMatch(${match.id})">Supprimer</button>` : '';
+
+                html += `<div class="match-card">
+                    <div class="match-teams">
+                        <div class="${match.winner_side === 'A' ? 'winner' : ''}">${teamA}</div>
+                        <div>vs</div>
+                        <div class="${match.winner_side === 'B' ? 'winner' : ''}">${teamB}</div>
+                    </div>
+                    <div class="match-result">
+                        <div>${date}</div>
+                        <div>${match.balls_remaining} boules</div>
+                        ${match.foul_black ? '<div>🚫 Faute noire</div>' : ''}
+                        ${!match.ranked ? '<div>Non classé</div>' : ''}
+                        ${delBtn}
+                    </div>
+                </div>`;
+            });
+
+            content.innerHTML = html || '<p>Aucune partie trouvée</p>';
+        }
+
+        // Filtrage de l'historique par nom de joueur
+        document.getElementById('historySearch').addEventListener('input', (e) => {
+            const query = e.target.value.toLowerCase().trim();
+            if (!query) {
+                renderHistory(loadedMatches);
+                return;
+            }
+            const filtered = loadedMatches.filter(match => {
+                const allNames = [...match.players_a, ...match.players_b].map(p => p.name.toLowerCase());
+                return allNames.some(name => name.includes(query));
+            });
+            renderHistory(filtered);
+        });
 
         async function deleteMatch(matchId) {
             if (!adminToken) { alert('Admin requis'); return; }

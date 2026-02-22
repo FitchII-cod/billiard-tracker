@@ -31,12 +31,21 @@ class Player(PlayerBase):
 class TeamBase(BaseModel):
     name: str
 
+class TeamSimple(TeamBase):
+    """Team without members — safe to serialize from ORM without resolving TeamMember→Player."""
+    id: int
+    key: str
+    created_at: datetime
+
+    class Config:
+        from_attributes = True
+
 class Team(TeamBase):
     id: int
     key: str
     created_at: datetime
     members: List[Player] = []
-    
+
     class Config:
         from_attributes = True
 
@@ -66,9 +75,9 @@ class MatchResponse(BaseModel):
     ranked: bool
     players_a: List[Player]
     players_b: List[Player]
-    team_a: Optional[Team] = None
-    team_b: Optional[Team] = None
-    
+    team_a: Optional[TeamSimple] = None
+    team_b: Optional[TeamSimple] = None
+
     class Config:
         from_attributes = True
 
